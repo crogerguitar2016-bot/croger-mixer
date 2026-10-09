@@ -1,4 +1,4 @@
-name: Gerar APK Discipulador Cristão V2
+name: Gerar APK CROGER MIXER
 
 on:
   workflow_dispatch:
@@ -52,11 +52,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install "cython==0.29.34"
-          pip install git+https://github.com/kivy/buildozer.git
-
-      - name: Habilitar XML dentro do application
-        run: |
-          python ci/patch_buildozer.py
+          pip install git+https://github.com/kivy/buildozer.git@a153097b3c534bea8a17da2abf1369d67c8cbfcb
 
       - name: Instalar Android SDK
         run: |
@@ -80,27 +76,28 @@ jobs:
 
       - name: Preparar Python-for-Android
         run: |
-          git clone --depth 1 \
-            --branch develop \
+          git clone \
             https://github.com/kivy/python-for-android.git \
             "$HOME/p4a"
 
-      - name: Verificar arquivos do projeto
+          cd "$HOME/p4a"
+
+          git checkout \
+            e772ad93f20a61c0bbe1cf8955e073cfb41062e1
+
+      - name: Verificar arquivos do CROGER MIXER
         run: |
-          echo "=== PROJETO ==="
-          ls -la
-
-          echo
-          echo "=== DEVOCIONAIS ==="
-          ls devocionais | sort
-
-          echo
-          echo "Quantidade:"
-          find devocionais -maxdepth 1 -type f -name '*.txt' | wc -l
-
-          echo
-          echo "=== ÍCONE ==="
+          echo "=== CROGER MIXER ==="
+          ls -lh main.py
+          ls -lh mixer_controller.py
+          ls -lh android_audio.py
           ls -lh icon.png
+          echo
+          echo "=== IDENTIDADE ==="
+          grep -n "title =\|package.name\|package.domain" buildozer.spec
+          echo
+          echo "=== TESTE DE SINTAXE ==="
+          python -m py_compile main.py mixer_controller.py android_audio.py
 
       - name: Compilar APK
         env:
@@ -117,6 +114,6 @@ jobs:
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Discipulador-Cristao-V2-APK
+          name: CROGER-MIXER-APK
           path: bin/*.apk
           if-no-files-found: error

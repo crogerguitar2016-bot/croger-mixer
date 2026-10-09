@@ -5,3 +5,8 @@ __pycache__/
 *.pyo
 *.log
 progresso.json
+
+# CROGER MIXER - arquivos locais
+BACKUP_BASE_FUNCIONAL/
+__pycache__/
+*.pyc

@@ -1,1037 +1,1882 @@
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.core.window import Window
+from kivy.graphics import Color, RoundedRectangle, Line
 from kivy.metrics import dp
-
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
-from kivy.uix.togglebutton import ToggleButton
+from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
-from kivy.uix.popup import Popup
+from kivy.uix.slider import Slider
+from kivy.uix.togglebutton import ToggleButton
+from kivy.uix.widget import Widget
 
-from android_utils import (
-    ler_contatos_android,
-    solicitar_permissao_contatos,
-    abrir_whatsapp_business,
-    overlay_permitido,
-    abrir_configuracao_overlay,
-    iniciar_overlay_envio
-)
-
-from app_state import (
-    ProgressoDiscipulado,
-    montar_mensagem
-)
-
-from devocionais_loader import (
-    carregar_devocional,
-    carregar_todos
-)
+from mixer_controller import MixerController
+from android_audio import AndroidAudioEngine
 
 
-TOTAL_DEVOCIONAIS = 40
+# ==========================================================
+# CORES
+# ==========================================================
+
+BG = (0.018, 0.039, 0.075, 1)
+CARD = (0.035, 0.071, 0.125, 1)
+CARD_2 = (0.045, 0.09, 0.16, 1)
+
+BORDER = (0.10, 0.23, 0.39, 1)
+
+WHITE = (0.96, 0.98, 1.0, 1)
+TEXT_2 = (0.62, 0.70, 0.84, 1)
+
+CYAN = (0.10, 0.72, 1.00, 1)
+BLUE = (0.12, 0.35, 1.00, 1)
+PURPLE = (0.55, 0.12, 1.00, 1)
+PINK = (1.00, 0.18, 0.78, 1)
+
+Window.clearcolor = BG
 
 
-class DiscipuladorCristaoApp(App):
+# ==========================================================
+# UTILIDADES
+# ==========================================================
 
-    title = "Discipulador Cristão V2"
+def tempo_texto(segundos):
 
-    def build(self):
+    try:
+        segundos = max(0, int(segundos))
+    except Exception:
+        segundos = 0
 
-        self.contatos = []
-        self.contato_selecionado = None
+    minutos = segundos // 60
+    segundos = segundos % 60
 
-        # V2 - seleção múltipla
-        self.contatos_selecionados = []
-        self.botoes_contatos = []
+    return f"{minutos:02d}:{segundos:02d}"
 
-        # Fila que será usada pelo controle flutuante
-        self.fila_envio = []
-        self.indice_fila = 0
 
-        self.progresso = ProgressoDiscipulado(
-            self.user_data_dir
+def cor_hex(cor):
+
+    r = int(cor[0] * 255)
+    g = int(cor[1] * 255)
+    b = int(cor[2] * 255)
+
+    return f"{r:02x}{g:02x}{b:02x}"
+
+
+# ==========================================================
+# CARD
+# ==========================================================
+
+class Card(BoxLayout):
+
+    def __init__(
+        self,
+        radius=18,
+        bg_color=CARD,
+        border_color=BORDER,
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        self.radius = dp(radius)
+
+        with self.canvas.before:
+
+            self._bg_color = Color(
+                *bg_color
+            )
+
+            self._bg = RoundedRectangle(
+                pos=self.pos,
+                size=self.size,
+                radius=[self.radius]
+            )
+
+            self._border_color = Color(
+                *border_color
+            )
+
+            self._border = Line(
+                rounded_rectangle=(
+                    self.x,
+                    self.y,
+                    self.width,
+                    self.height,
+                    self.radius
+                ),
+                width=1
+            )
+
+        self.bind(
+            pos=self._update_canvas,
+            size=self._update_canvas
         )
 
-        self.dia_automatico = (
-            self.progresso.dia_automatico()
+
+    def _update_canvas(self, *args):
+
+        self._bg.pos = self.pos
+        self._bg.size = self.size
+
+        self._border.rounded_rectangle = (
+            self.x,
+            self.y,
+            self.width,
+            self.height,
+            self.radius
         )
 
-        self.dia_visualizado = (
-            self.dia_automatico
-        )
 
-        # =================================================
-        # LAYOUT PRINCIPAL
-        # =================================================
+# ==========================================================
+# BOTÃO
+# ==========================================================
 
-        raiz = BoxLayout(
-            orientation="vertical",
-            spacing=dp(6),
-            padding=dp(8)
-        )
+class MixerButton(Button):
 
-        # =================================================
-        # CABEÇALHO
-        # =================================================
+    def __init__(
+        self,
+        bg=CARD_2,
+        fg=WHITE,
+        radius=12,
+        **kwargs
+    ):
 
-        self.lbl_cabecalho = Label(
-            text="[b]DISCIPULADOR CRISTÃO[/b]",
-            markup=True,
+        super().__init__(**kwargs)
+
+        self.background_normal = ""
+        self.background_down = ""
+
+        self.background_color = bg
+        self.color = fg
+
+        self.border = (0, 0, 0, 0)
+
+        self.font_size = "14sp"
+
+
+# ==========================================================
+# TÍTULO DE SEÇÃO
+# ==========================================================
+
+class SectionHeader(BoxLayout):
+
+    def __init__(
+        self,
+        icon,
+        title,
+        subtitle,
+        accent=CYAN,
+        **kwargs
+    ):
+
+        super().__init__(
+            orientation="horizontal",
             size_hint_y=None,
-            height=dp(42),
-            font_size="21sp"
+            height=dp(52),
+            spacing=dp(9),
+            **kwargs
         )
 
-        raiz.add_widget(
-            self.lbl_cabecalho
+        lbl_icon = Label(
+            text=icon,
+            size_hint_x=None,
+            width=dp(38),
+            font_size="25sp",
+            color=accent
         )
 
-        # =================================================
-        # STATUS AUTOMÁTICO
-        # =================================================
+        textos = BoxLayout(
+            orientation="vertical"
+        )
+
+        titulo = Label(
+            text=f"[b]{title}[/b]",
+            markup=True,
+            halign="left",
+            valign="middle",
+            font_size="16sp",
+            color=WHITE
+        )
+
+        subtitulo = Label(
+            text=subtitle,
+            halign="left",
+            valign="middle",
+            font_size="11sp",
+            color=TEXT_2
+        )
+
+        for lbl in (
+            titulo,
+            subtitulo
+        ):
+            lbl.bind(
+                size=lambda obj, size:
+                setattr(
+                    obj,
+                    "text_size",
+                    size
+                )
+            )
+
+        textos.add_widget(
+            titulo
+        )
+
+        textos.add_widget(
+            subtitulo
+        )
+
+        self.add_widget(
+            lbl_icon
+        )
+
+        self.add_widget(
+            textos
+        )
+
+
+# ==========================================================
+# CHIP
+# ==========================================================
+
+class InfoChip(Card):
+
+    def __init__(
+        self,
+        title,
+        value,
+        accent=CYAN,
+        **kwargs
+    ):
+
+        super().__init__(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(45),
+            padding=dp(8),
+            radius=11,
+            bg_color=CARD_2,
+            **kwargs
+        )
+
+        self.lbl = Label(
+            text=(
+                f"[color=#{cor_hex(TEXT_2)}]"
+                f"{title}: [/color]"
+                f"[b][color=#{cor_hex(accent)}]"
+                f"{value}"
+                f"[/color][/b]"
+            ),
+            markup=True,
+            font_size="12sp"
+        )
+
+        self.add_widget(
+            self.lbl
+        )
+
+
+    def set_value(
+        self,
+        title,
+        value,
+        accent=CYAN
+    ):
+
+        self.lbl.text = (
+            f"[color=#{cor_hex(TEXT_2)}]"
+            f"{title}: [/color]"
+            f"[b][color=#{cor_hex(accent)}]"
+            f"{value}"
+            f"[/color][/b]"
+        )
+
+
+# ==========================================================
+# LINHA DO MIXER
+# ==========================================================
+
+class StemRow(Card):
+
+    def __init__(
+        self,
+        controller,
+        stem,
+        nome,
+        icon,
+        accent,
+        **kwargs
+    ):
+
+        super().__init__(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(64),
+            spacing=dp(7),
+            padding=(
+                dp(8),
+                dp(5)
+            ),
+            radius=11,
+            bg_color=CARD_2,
+            **kwargs
+        )
+
+        self.controller = controller
+        self.stem = stem
+        self.accent = accent
+
+        self.lbl_icon = Label(
+            text=icon,
+            size_hint_x=None,
+            width=dp(34),
+            font_size="23sp",
+            color=accent
+        )
+
+        self.lbl_nome = Label(
+            text=f"[b]{nome}[/b]",
+            markup=True,
+            size_hint_x=None,
+            width=dp(70),
+            font_size="13sp",
+            color=WHITE
+        )
+
+        self.slider = Slider(
+            min=0,
+            max=1.5,
+            value=(
+                controller
+                .stems[stem]["volume"]
+            ),
+            step=0.01
+        )
+
+        self.slider.value_track = True
+        self.slider.value_track_color = accent
+        self.slider.cursor_size = (
+            dp(20),
+            dp(20)
+        )
+
+        self.lbl_percent = Label(
+            text="100%",
+            size_hint_x=None,
+            width=dp(50),
+            color=accent,
+            font_size="13sp"
+        )
+
+        self.btn_mute = ToggleButton(
+            text="MUDO",
+            size_hint_x=None,
+            width=dp(68),
+            background_normal="",
+            background_down="",
+            background_color=CARD,
+            color=WHITE,
+            font_size="10sp"
+        )
+
+        self.btn_solo = ToggleButton(
+            text="SOLO",
+            size_hint_x=None,
+            width=dp(65),
+            background_normal="",
+            background_down="",
+            background_color=CARD,
+            color=WHITE,
+            font_size="10sp"
+        )
+
+        self.slider.bind(
+            value=self._volume
+        )
+
+        self.btn_mute.bind(
+            on_release=self._mute
+        )
+
+        self.btn_solo.bind(
+            on_release=self._solo
+        )
+
+        self.add_widget(
+            self.lbl_icon
+        )
+
+        self.add_widget(
+            self.lbl_nome
+        )
+
+        self.add_widget(
+            self.slider
+        )
+
+        self.add_widget(
+            self.lbl_percent
+        )
+
+        self.add_widget(
+            self.btn_mute
+        )
+
+        self.add_widget(
+            self.btn_solo
+        )
+
+        self.refresh()
+
+
+    def _volume(
+        self,
+        instance,
+        value
+    ):
+
+        self.controller.set_volume(
+            self.stem,
+            value
+        )
+
+
+    def _mute(
+        self,
+        *args
+    ):
+
+        self.controller.toggle_mute(
+            self.stem
+        )
+
+
+    def _solo(
+        self,
+        *args
+    ):
+
+        self.controller.toggle_solo(
+            self.stem
+        )
+
+
+    def refresh(self):
+
+        dados = self.controller.stems[
+            self.stem
+        ]
+
+        valor = dados["volume"]
+
+        if abs(
+            self.slider.value - valor
+        ) > 0.001:
+
+            self.slider.value = valor
+
+        self.lbl_percent.text = (
+            f"{int(valor * 100)}%"
+        )
+
+        self.btn_mute.state = (
+            "down"
+            if dados["mute"]
+            else "normal"
+        )
+
+        self.btn_solo.state = (
+            "down"
+            if dados["solo"]
+            else "normal"
+        )
+
+        self.btn_mute.background_color = (
+            PURPLE
+            if dados["mute"]
+            else CARD
+        )
+
+        self.btn_solo.background_color = (
+            BLUE
+            if dados["solo"]
+            else CARD
+        )
+
+
+# ==========================================================
+# TELA PRINCIPAL
+# ==========================================================
+
+class CrogerMixerScreen(
+    ScrollView
+):
+
+    def __init__(
+        self,
+        controller,
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        self.controller = controller
+
+        self.audio_engine = AndroidAudioEngine(
+            on_loaded=self.controller.audio_loaded,
+            on_error=self.controller.audio_error
+        )
+
+        self.controller.attach_audio_engine(
+            self.audio_engine
+        )
+
+        self.do_scroll_x = False
+
+        self.content = BoxLayout(
+            orientation="vertical",
+            size_hint_y=None,
+            spacing=dp(12),
+            padding=dp(10)
+        )
+
+        self.content.bind(
+            minimum_height=
+            self.content.setter(
+                "height"
+            )
+        )
+
+        self.add_widget(
+            self.content
+        )
+
+        self._build_header()
+        self._build_player()
+        self._build_mixer()
+        self._build_analysis()
+        self._build_rhythm_transpose()
+        self._build_metronome()
+        self._build_bottom()
+
+        self.controller.on_change = (
+            self.refresh_from_controller
+        )
+
+        self.refresh_from_controller()
+
+        Clock.schedule_interval(
+            self._tick,
+            0.25
+        )
+
+
+    # ======================================================
+    # CABEÇALHO
+    # ======================================================
+
+    def _build_header(self):
+
+        header = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(72),
+            spacing=dp(8)
+        )
+
+        menu = MixerButton(
+            text="☰",
+            size_hint_x=None,
+            width=dp(48),
+            bg=BG,
+            font_size="26sp"
+        )
+
+        logo = Image(
+            source="icon.png",
+            size_hint_x=None,
+            width=dp(58)
+        )
+
+        textos = BoxLayout(
+            orientation="vertical"
+        )
+
+        titulo = Label(
+            text=(
+                "[b]CROGER "
+                f"[color=#{cor_hex(CYAN)}]"
+                "MIXER"
+                "[/color][/b]"
+            ),
+            markup=True,
+            halign="left",
+            valign="bottom",
+            font_size="25sp",
+            color=WHITE
+        )
+
+        subtitulo = Label(
+            text=(
+                "Separação, análise e "
+                "transposição musical"
+            ),
+            halign="left",
+            valign="top",
+            font_size="11sp",
+            color=TEXT_2
+        )
+
+        titulo.bind(
+            size=lambda obj, size:
+            setattr(
+                obj,
+                "text_size",
+                size
+            )
+        )
+
+        subtitulo.bind(
+            size=lambda obj, size:
+            setattr(
+                obj,
+                "text_size",
+                size
+            )
+        )
+
+        textos.add_widget(
+            titulo
+        )
+
+        textos.add_widget(
+            subtitulo
+        )
+
+        config = MixerButton(
+            text="⚙",
+            size_hint_x=None,
+            width=dp(50),
+            bg=BG,
+            font_size="25sp"
+        )
+
+        header.add_widget(
+            menu
+        )
+
+        header.add_widget(
+            logo
+        )
+
+        header.add_widget(
+            textos
+        )
+
+        header.add_widget(
+            config
+        )
+
+        self.content.add_widget(
+            header
+        )
+
+
+    # ======================================================
+    # PLAYER
+    # ======================================================
+
+    def _build_player(self):
+
+        card = Card(
+            orientation="vertical",
+            size_hint_y=None,
+            height=dp(330),
+            padding=dp(12),
+            spacing=dp(6)
+        )
+
+        top = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(95),
+            spacing=dp(10)
+        )
+
+        self.cover = Image(
+            source="icon.png",
+            size_hint_x=None,
+            width=dp(92)
+        )
+
+        infos = BoxLayout(
+            orientation="vertical"
+        )
+
+        self.lbl_music = Label(
+            text="Nenhuma música selecionada",
+            halign="left",
+            valign="middle",
+            font_size="20sp",
+            bold=True,
+            color=WHITE
+        )
+
+        self.lbl_music.bind(
+            size=lambda obj, size:
+            setattr(
+                obj,
+                "text_size",
+                size
+            )
+        )
 
         self.lbl_status = Label(
-            text="",
-            markup=True,
-            size_hint_y=None,
-            height=dp(40),
-            font_size="15sp"
+            text=(
+                "Selecione uma música "
+                "para iniciar"
+            ),
+            halign="left",
+            valign="top",
+            font_size="12sp",
+            color=TEXT_2
         )
 
-        raiz.add_widget(
+        self.lbl_status.bind(
+            size=lambda obj, size:
+            setattr(
+                obj,
+                "text_size",
+                size
+            )
+        )
+
+        infos.add_widget(
+            self.lbl_music
+        )
+
+        infos.add_widget(
             self.lbl_status
         )
 
-        # =================================================
-        # DIA E TÍTULO
-        # =================================================
-
-        self.lbl_dia = Label(
-            text="",
-            markup=True,
-            size_hint_y=None,
-            height=dp(34),
-            font_size="18sp"
+        top.add_widget(
+            self.cover
         )
 
-        raiz.add_widget(
-            self.lbl_dia
+        top.add_widget(
+            infos
         )
 
-        self.lbl_titulo = Label(
-            text="",
-            markup=True,
-            size_hint_y=None,
-            height=dp(55),
-            font_size="17sp",
-            halign="center",
-            valign="middle"
+        self.btn_selecionar = MixerButton(
+            text="⋮",
+            size_hint_x=None,
+            width=dp(42),
+            bg=CARD,
+            font_size="26sp"
         )
 
-        self.lbl_titulo.bind(
-            size=self._ajustar_texto
+        self.btn_selecionar.bind(
+            on_release=lambda *_:
+            self.controller.selecionar_musica()
         )
 
-        raiz.add_widget(
-            self.lbl_titulo
+        top.add_widget(
+            self.btn_selecionar
         )
 
-        # =================================================
-        # TEXTO DO DEVOCIONAL
-        # =================================================
-
-        scroll_devocional = ScrollView(
-            size_hint=(1, 0.38)
+        card.add_widget(
+            top
         )
 
-        self.lbl_devocional = Label(
-            text="",
-            markup=False,
-            size_hint_y=None,
-            font_size="15sp",
-            halign="left",
-            valign="top",
-            padding=(dp(8), dp(8))
-        )
-
-        self.lbl_devocional.bind(
-            width=self._ajustar_largura_devocional
-        )
-
-        self.lbl_devocional.bind(
-            texture_size=self._ajustar_altura_devocional
-        )
-
-        scroll_devocional.add_widget(
-            self.lbl_devocional
-        )
-
-        raiz.add_widget(
-            scroll_devocional
-        )
-
-        # =================================================
-        # NAVEGAÇÃO
-        # =================================================
-
-        navegacao = BoxLayout(
+        chips = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
             height=dp(48),
-            spacing=dp(5)
+            spacing=dp(8)
         )
 
-        btn_anterior = Button(
-            text="◀ ANTERIOR"
+        self.chip_tom = InfoChip(
+            "Tom",
+            "--"
         )
 
-        btn_escolher = Button(
-            text="ESCOLHER"
+        self.chip_bpm = InfoChip(
+            "BPM",
+            "--",
+            PURPLE
         )
 
-        btn_proximo = Button(
-            text="PRÓXIMO ▶"
+        self.chip_compasso = InfoChip(
+            "Compasso",
+            "--"
         )
 
-        btn_anterior.bind(
-            on_release=self.anterior
+        chips.add_widget(
+            self.chip_tom
         )
 
-        btn_escolher.bind(
-            on_release=self.abrir_escolha_devocional
+        chips.add_widget(
+            self.chip_bpm
         )
 
-        btn_proximo.bind(
-            on_release=self.proximo
+        chips.add_widget(
+            self.chip_compasso
         )
 
-        navegacao.add_widget(
-            btn_anterior
+        card.add_widget(
+            chips
         )
 
-        navegacao.add_widget(
-            btn_escolher
-        )
-
-        navegacao.add_widget(
-            btn_proximo
-        )
-
-        raiz.add_widget(
-            navegacao
-        )
-
-        # =================================================
-        # VOLTAR AO AUTOMÁTICO
-        # =================================================
-
-        self.btn_hoje = Button(
-            text="VOLTAR AO DEVOCIONAL DE HOJE",
+        self.slider_position = Slider(
+            min=0,
+            max=1,
+            value=0,
             size_hint_y=None,
-            height=dp(44)
+            height=dp(34)
         )
 
-        self.btn_hoje.bind(
-            on_release=self.voltar_ao_automatico
+        self.slider_position.value_track = True
+        self.slider_position.value_track_color = CYAN
+
+        self.slider_position.bind(
+            on_touch_up=
+            self._seek_from_slider
         )
 
-        raiz.add_widget(
-            self.btn_hoje
+        card.add_widget(
+            self.slider_position
         )
 
-        # =================================================
-        # TÍTULO DOS CONTATOS
-        # =================================================
-
-        linha_contatos = BoxLayout(
+        tempos = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
-            height=dp(42),
-            spacing=dp(5)
+            height=dp(25)
         )
 
-        self.lbl_contatos = Label(
-            text="[b]PESSOAS DO DISCIPULADO[/b]",
-            markup=True
+        self.lbl_position = Label(
+            text="00:00",
+            halign="left",
+            color=TEXT_2
         )
 
-        btn_atualizar = Button(
-            text="ATUALIZAR",
-            size_hint_x=0.35
+        self.lbl_duration = Label(
+            text="00:00",
+            halign="right",
+            color=TEXT_2
         )
 
-        btn_atualizar.bind(
-            on_release=self.recarregar_contatos
+        tempos.add_widget(
+            self.lbl_position
         )
 
-        linha_contatos.add_widget(
-            self.lbl_contatos
+        tempos.add_widget(
+            self.lbl_duration
         )
 
-        linha_contatos.add_widget(
-            btn_atualizar
+        card.add_widget(
+            tempos
         )
 
-        raiz.add_widget(
-            linha_contatos
-        )
-
-        # =================================================
-        # SELEÇÃO MÚLTIPLA
-        # =================================================
-
-        linha_selecao = BoxLayout(
+        controls = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
-            height=dp(42),
+            height=dp(92),
+            spacing=dp(8)
+        )
+
+        btn_shuffle = MixerButton(
+            text="⤨",
+            bg=CARD,
+            font_size="23sp"
+        )
+
+        btn_back = MixerButton(
+            text="|◀",
+            bg=CARD,
+            font_size="22sp"
+        )
+
+        self.btn_play = MixerButton(
+            text="▶",
+            bg=BLUE,
+            font_size="32sp"
+        )
+
+        btn_next = MixerButton(
+            text="▶|",
+            bg=CARD,
+            font_size="22sp"
+        )
+
+        btn_stop = MixerButton(
+            text="■",
+            bg=CARD,
+            font_size="22sp"
+        )
+
+        btn_repeat = MixerButton(
+            text="↻",
+            bg=CARD,
+            font_size="24sp"
+        )
+
+        btn_back.bind(
+            on_release=lambda *_:
+            self.controller.voltar(10)
+        )
+
+        self.btn_play.bind(
+            on_release=lambda *_:
+            self.controller.play_pause()
+        )
+
+        btn_next.bind(
+            on_release=lambda *_:
+            self.controller.avancar(10)
+        )
+
+        btn_stop.bind(
+            on_release=lambda *_:
+            self.controller.parar()
+        )
+
+        for btn in (
+            btn_shuffle,
+            btn_back,
+            self.btn_play,
+            btn_next,
+            btn_stop,
+            btn_repeat
+        ):
+
+            controls.add_widget(
+                btn
+            )
+
+        card.add_widget(
+            controls
+        )
+
+        self.content.add_widget(
+            card
+        )
+
+
+    # ======================================================
+    # MIXER
+    # ======================================================
+
+    def _build_mixer(self):
+
+        card = Card(
+            orientation="vertical",
+            size_hint_y=None,
+            height=dp(355),
+            padding=dp(10),
+            spacing=dp(6)
+        )
+
+        card.add_widget(
+            SectionHeader(
+                "▥",
+                "MIXER DE ÁUDIO",
+                (
+                    "Ajuste o volume de cada "
+                    "elemento da música"
+                )
+            )
+        )
+
+        self.stem_rows = {}
+
+        dados = (
+            (
+                "voz",
+                "Voz",
+                "●",
+                CYAN
+            ),
+            (
+                "bateria",
+                "Bateria",
+                "◉",
+                PURPLE
+            ),
+            (
+                "baixo",
+                "Baixo",
+                "◆",
+                CYAN
+            ),
+            (
+                "outros",
+                "Outros",
+                "♪",
+                PINK
+            ),
+        )
+
+        for (
+            stem,
+            nome,
+            icon,
+            accent
+        ) in dados:
+
+            row = StemRow(
+                self.controller,
+                stem,
+                nome,
+                icon,
+                accent
+            )
+
+            self.stem_rows[
+                stem
+            ] = row
+
+            card.add_widget(
+                row
+            )
+
+        self.content.add_widget(
+            card
+        )
+
+
+    # ======================================================
+    # ANÁLISE / ACORDES
+    # ======================================================
+
+    def _build_analysis(self):
+
+        linha = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(190),
+            spacing=dp(10)
+        )
+
+        harmonica = Card(
+            orientation="vertical",
+            padding=dp(10),
             spacing=dp(5)
         )
 
-        btn_todos = Button(
-            text="SELECIONAR TODOS"
+        harmonica.add_widget(
+            SectionHeader(
+                "▥",
+                "ANÁLISE HARMÔNICA",
+                "Campo harmônico da música",
+                PURPLE
+            )
         )
 
-        btn_limpar = Button(
-            text="LIMPAR"
+        self.harmonic_box = BoxLayout(
+            orientation="horizontal",
+            spacing=dp(4)
         )
 
-        btn_todos.bind(
-            on_release=self.selecionar_todos
+        self.harmonic_labels = []
+
+        for _ in range(7):
+
+            lbl = MixerButton(
+                text="--",
+                bg=CARD_2,
+                fg=CYAN,
+                font_size="12sp"
+            )
+
+            self.harmonic_labels.append(
+                lbl
+            )
+
+            self.harmonic_box.add_widget(
+                lbl
+            )
+
+        harmonica.add_widget(
+            self.harmonic_box
         )
 
-        btn_limpar.bind(
-            on_release=self.limpar_selecao
-        )
-
-        linha_selecao.add_widget(
-            btn_todos
-        )
-
-        linha_selecao.add_widget(
-            btn_limpar
-        )
-
-        raiz.add_widget(
-            linha_selecao
-        )
-
-        # =================================================
-        # LISTA DE CONTATOS
-        # =================================================
-
-        scroll_contatos = ScrollView(
-            size_hint=(1, 0.25)
-        )
-
-        self.caixa_contatos = BoxLayout(
+        acordes = Card(
             orientation="vertical",
-            spacing=dp(4),
-            size_hint_y=None
+            padding=dp(10),
+            spacing=dp(5)
         )
 
-        self.caixa_contatos.bind(
-            minimum_height=
-            self.caixa_contatos.setter("height")
+        acordes.add_widget(
+            SectionHeader(
+                "♪",
+                "ACORDES EM TEMPO REAL",
+                "Acorde atual e próximos",
+                PURPLE
+            )
         )
 
-        scroll_contatos.add_widget(
-            self.caixa_contatos
-        )
-
-        raiz.add_widget(
-            scroll_contatos
-        )
-
-        # =================================================
-        # RESUMO DA SELEÇÃO
-        # =================================================
-
-        self.lbl_selecionado = Label(
-            text="Nenhuma pessoa selecionada.",
+        linha_atual = BoxLayout(
+            orientation="horizontal",
             size_hint_y=None,
-            height=dp(34),
-            font_size="14sp"
+            height=dp(46)
         )
 
-        raiz.add_widget(
-            self.lbl_selecionado
-        )
-
-        # =================================================
-        # INICIAR ENVIO
-        # =================================================
-
-        self.btn_enviar = Button(
-            text="INICIAR ENVIO",
-            size_hint_y=None,
-            height=dp(55),
-            font_size="19sp",
-            disabled=True
-        )
-
-        self.btn_enviar.bind(
-            on_release=self.enviar
-        )
-
-        raiz.add_widget(
-            self.btn_enviar
-        )
-
-        # =================================================
-        # PRIMEIRA ATUALIZAÇÃO
-        # =================================================
-
-        self.atualizar_devocional()
-
-        Clock.schedule_once(
-            self.iniciar_contatos,
-            0.8
-        )
-
-        return raiz
-
-
-    # =====================================================
-    # AJUSTES DE TEXTO
-    # =====================================================
-
-    def _ajustar_texto(
-        self,
-        widget,
-        tamanho
-    ):
-
-        widget.text_size = (
-            tamanho[0] - dp(12),
-            None
-        )
-
-
-    def _ajustar_largura_devocional(
-        self,
-        widget,
-        largura
-    ):
-
-        widget.text_size = (
-            largura - dp(20),
-            None
-        )
-
-
-    def _ajustar_altura_devocional(
-        self,
-        widget,
-        textura
-    ):
-
-        widget.height = (
-            textura[1] + dp(20)
-        )
-
-
-    # =====================================================
-    # DEVOCIONAL ATUAL
-    # =====================================================
-
-    def atualizar_devocional(self):
-
-        devocional = carregar_devocional(
-            self.dia_visualizado
-        )
-
-        self.lbl_dia.text = (
-            f"[b]DIA {devocional['dia']}[/b]"
-        )
-
-        self.lbl_titulo.text = (
-            f"[b]{devocional['titulo']}[/b]"
-        )
-
-        self.lbl_devocional.text = (
-            devocional["conteudo"]
-        )
-
-        if (
-            self.dia_visualizado
-            == self.dia_automatico
-        ):
-
-            self.lbl_status.text = (
-                "[b]🟢 DEVOCIONAL AUTOMÁTICO DE HOJE[/b]"
+        linha_atual.add_widget(
+            Label(
+                text="Acorde atual:",
+                color=TEXT_2,
+                font_size="12sp"
             )
-
-            self.btn_hoje.disabled = True
-
-        else:
-
-            self.lbl_status.text = (
-                "[b]🟡 DEVOCIONAL ESCOLHIDO MANUALMENTE[/b]"
-            )
-
-            self.btn_hoje.disabled = False
-
-
-    # =====================================================
-    # ANTERIOR
-    # =====================================================
-
-    def anterior(self, *args):
-
-        if self.dia_visualizado > 1:
-
-            self.dia_visualizado -= 1
-
-            self.atualizar_devocional()
-
-
-    # =====================================================
-    # PRÓXIMO
-    # =====================================================
-
-    def proximo(self, *args):
-
-        if (
-            self.dia_visualizado
-            < TOTAL_DEVOCIONAIS
-        ):
-
-            self.dia_visualizado += 1
-
-            self.atualizar_devocional()
-
-
-    # =====================================================
-    # VOLTAR AO AUTOMÁTICO
-    # =====================================================
-
-    def voltar_ao_automatico(
-        self,
-        *args
-    ):
-
-        self.dia_visualizado = (
-            self.dia_automatico
         )
 
-        self.atualizar_devocional()
-
-
-    # =====================================================
-    # ESCOLHER QUALQUER DEVOCIONAL
-    # =====================================================
-
-    def abrir_escolha_devocional(
-        self,
-        *args
-    ):
-
-        conteudo = BoxLayout(
-            orientation="vertical",
-            spacing=dp(4),
-            padding=dp(5)
+        self.lbl_acorde = MixerButton(
+            text="--",
+            bg=PURPLE,
+            font_size="18sp"
         )
 
-        scroll = ScrollView()
-
-        lista = BoxLayout(
-            orientation="vertical",
-            spacing=dp(4),
-            size_hint_y=None
+        linha_atual.add_widget(
+            self.lbl_acorde
         )
 
-        lista.bind(
-            minimum_height=
-            lista.setter("height")
+        acordes.add_widget(
+            linha_atual
         )
 
-        todos = carregar_todos()
-
-        popup = Popup(
-            title="Escolher Devocional",
-            size_hint=(0.94, 0.88)
+        self.lbl_proximos = Label(
+            text="-- | -- | -- | --",
+            color=WHITE,
+            font_size="13sp"
         )
 
-        for devocional in todos:
-
-            numero = devocional["dia"]
-
-            titulo = devocional["titulo"]
-
-            botao = Button(
-                text=(
-                    f"{numero:02d} - "
-                    f"{titulo}"
-                ),
-                size_hint_y=None,
-                height=dp(48)
-            )
-
-            botao.bind(
-                on_release=lambda btn,
-                n=numero,
-                p=popup:
-                self.selecionar_devocional(
-                    n,
-                    p
-                )
-            )
-
-            lista.add_widget(
-                botao
-            )
-
-        scroll.add_widget(
-            lista
+        acordes.add_widget(
+            self.lbl_proximos
         )
 
-        conteudo.add_widget(
-            scroll
+        linha.add_widget(
+            harmonica
         )
 
-        popup.content = conteudo
-
-        popup.open()
-
-
-    def selecionar_devocional(
-        self,
-        numero,
-        popup
-    ):
-
-        self.dia_visualizado = int(
-            numero
+        linha.add_widget(
+            acordes
         )
 
-        popup.dismiss()
-
-        self.atualizar_devocional()
-
-
-    # =====================================================
-    # CONTATOS
-    # =====================================================
-
-    def iniciar_contatos(
-        self,
-        *args
-    ):
-
-        self.lbl_contatos.text = (
-            "[b]Solicitando acesso aos contatos...[/b]"
-        )
-
-        solicitar_permissao_contatos(
-            self.permissao_respondida
+        self.content.add_widget(
+            linha
         )
 
 
-    def permissao_respondida(
-        self,
-        permitido
-    ):
+    # ======================================================
+    # RITMO / TRANSPOSIÇÃO
+    # ======================================================
 
-        if permitido:
-
-            Clock.schedule_once(
-                self.carregar_contatos,
-                0.3
-            )
-
-        else:
-
-            self.lbl_contatos.text = (
-                "[b]Permissão de contatos não concedida[/b]"
-            )
-
-
-    def recarregar_contatos(
-        self,
-        *args
-    ):
-
-        solicitar_permissao_contatos(
-            self.permissao_respondida
-        )
-
-
-    def carregar_contatos(
-        self,
-        *args
-    ):
-
-        self.lbl_contatos.text = (
-            "[b]Carregando contatos...[/b]"
-        )
-
-        # Mantém selecionados que ainda existirem
-        # depois de uma atualização da agenda.
-        numeros_selecionados = {
-            contato["numero"]
-            for contato in self.contatos_selecionados
-        }
-
-        self.caixa_contatos.clear_widgets()
-
-        self.contatos = (
-            ler_contatos_android()
-        )
-
-        self.contatos_selecionados = []
-        self.botoes_contatos = []
-
-        if not self.contatos:
-
-            self.lbl_contatos.text = (
-                "[b]Nenhum contato "
-                "Koinonia Discipulado encontrado[/b]"
-            )
-
-            self._atualizar_resumo_selecao()
-            return
-
-        self.lbl_contatos.text = (
-            f"[b]PESSOAS DO DISCIPULADO "
-            f"({len(self.contatos)})[/b]"
-        )
-
-        for indice, contato in enumerate(
-            self.contatos,
-            start=1
-        ):
-
-            nome = contato[
-                "primeiro_nome"
-            ]
-
-            botao = ToggleButton(
-                text=f"[ ] {indice} - {nome}",
-                size_hint_y=None,
-                height=dp(44)
-            )
-
-            botao.texto_base = (
-                f"{indice} - {nome}"
-            )
-
-            if (
-                contato["numero"]
-                in numeros_selecionados
-            ):
-
-                botao.state = "down"
-                botao.text = (
-                    f"[X] {botao.texto_base}"
-                )
-
-                self.contatos_selecionados.append(
-                    contato
-                )
-
-            botao.bind(
-                on_release=lambda btn,
-                c=contato:
-                self.selecionar_contato(
-                    c,
-                    btn
-                )
-            )
-
-            self.botoes_contatos.append(
-                (botao, contato)
-            )
-
-            self.caixa_contatos.add_widget(
-                botao
-            )
-
-        self._atualizar_resumo_selecao()
-
-
-    def selecionar_contato(
-        self,
-        contato,
-        botao
-    ):
-
-        if botao.state == "down":
-
-            if (
-                contato
-                not in self.contatos_selecionados
-            ):
-
-                self.contatos_selecionados.append(
-                    contato
-                )
-
-            botao.text = (
-                f"[X] {botao.texto_base}"
-            )
-
-        else:
-
-            if (
-                contato
-                in self.contatos_selecionados
-            ):
-
-                self.contatos_selecionados.remove(
-                    contato
-                )
-
-            botao.text = (
-                f"[ ] {botao.texto_base}"
-            )
-
-        self._atualizar_resumo_selecao()
-
-
-    def selecionar_todos(
-        self,
-        *args
-    ):
-
-        self.contatos_selecionados = list(
-            self.contatos
-        )
-
-        for botao, contato in self.botoes_contatos:
-
-            botao.state = "down"
-            botao.text = (
-                f"[X] {botao.texto_base}"
-            )
-
-        self._atualizar_resumo_selecao()
-
-
-    def limpar_selecao(
-        self,
-        *args
-    ):
-
-        self.contatos_selecionados = []
-
-        for botao, contato in self.botoes_contatos:
-
-            botao.state = "normal"
-            botao.text = (
-                f"[ ] {botao.texto_base}"
-            )
-
-        self._atualizar_resumo_selecao()
-
-
-    def _atualizar_resumo_selecao(
+    def _build_rhythm_transpose(
         self
     ):
 
-        quantidade = len(
-            self.contatos_selecionados
+        linha = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(190),
+            spacing=dp(10)
         )
 
-        if quantidade == 0:
-
-            self.lbl_selecionado.text = (
-                "Nenhuma pessoa selecionada."
-            )
-
-            self.btn_enviar.disabled = True
-
-        elif quantidade == 1:
-
-            nome = (
-                self.contatos_selecionados[0]
-                ["primeiro_nome"]
-            )
-
-            self.lbl_selecionado.text = (
-                f"1 pessoa selecionada: {nome}"
-            )
-
-            self.btn_enviar.disabled = False
-
-        else:
-
-            self.lbl_selecionado.text = (
-                f"{quantidade} pessoas selecionadas"
-            )
-
-            self.btn_enviar.disabled = False
-
-
-    # =====================================================
-    # ENVIAR
-    # =====================================================
-
-    def enviar(
-        self,
-        *args
-    ):
-
-        if not self.contatos_selecionados:
-            return
-
-        # ==================================================
-        # PREPARAR FILA PERSONALIZADA
-        # ==================================================
-
-        self.fila_envio = []
-
-        for pessoa in self.contatos_selecionados:
-
-            nome = pessoa[
-                "primeiro_nome"
-            ]
-
-            mensagem = montar_mensagem(
-                nome,
-                self.dia_visualizado
-            )
-
-            self.fila_envio.append({
-                "nome": nome,
-                "numero": pessoa["numero"],
-                "mensagem": mensagem
-            })
-
-
-        # ==================================================
-        # PRIMEIRA VEZ:
-        # PEDIR PERMISSÃO PARA JANELA FLUTUANTE
-        # ==================================================
-
-        if not overlay_permitido():
-
-            sucesso, erro = (
-                abrir_configuracao_overlay()
-            )
-
-            if sucesso:
-
-                self.lbl_selecionado.text = (
-                    "Autorize 'Exibir sobre outros apps'. "
-                    "Depois volte e toque "
-                    "INICIAR ENVIO novamente."
-                )
-
-            else:
-
-                self.mostrar_erro(
-                    erro
-                )
-
-            return
-
-
-        # ==================================================
-        # INICIAR JANELA FLUTUANTE + WHATSAPP
-        # ==================================================
-
-        sucesso, erro = (
-            iniciar_overlay_envio(
-                self.fila_envio
-            )
-        )
-
-        if sucesso:
-
-            quantidade = len(
-                self.fila_envio
-            )
-
-            self.lbl_selecionado.text = (
-                f"Fila iniciada: "
-                f"{quantidade} pessoa(s)"
-            )
-
-            # O próprio OverlayService abrirá
-            # o primeiro contato no WhatsApp Business.
-            #
-            # Depois:
-            #
-            #   ANTERIOR
-            #   PRÓXIMO
-            #   ENCERRAR ENVIO
-            #
-            # funcionarão diretamente sobre o WhatsApp.
-
-            if (
-                self.dia_visualizado
-                == self.dia_automatico
-            ):
-
-                self.progresso.registrar_envio_automatico(
-                    self.dia_visualizado
-                )
-
-        else:
-
-            self.mostrar_erro(
-                erro
-            )
-
-
-
-    # =====================================================
-    # ERRO
-    # =====================================================
-
-    def mostrar_erro(
-        self,
-        mensagem
-    ):
-
-        caixa = BoxLayout(
+        ritmo = Card(
             orientation="vertical",
+            padding=dp(10),
+            spacing=dp(5)
+        )
+
+        ritmo.add_widget(
+            SectionHeader(
+                "◉",
+                "COMPASSO E RITMO",
+                "Posição atual na música",
+                CYAN
+            )
+        )
+
+        stats = BoxLayout(
+            orientation="horizontal",
+            spacing=dp(6)
+        )
+
+        self.lbl_compasso_num = (
+            MixerButton(
+                text="Compasso\n0",
+                bg=CARD_2,
+                font_size="13sp"
+            )
+        )
+
+        self.lbl_tempo_num = (
+            MixerButton(
+                text="Tempo\n0",
+                bg=CARD_2,
+                font_size="13sp"
+            )
+        )
+
+        self.lbl_batidas = (
+            MixerButton(
+                text="○ ○ ○ ○",
+                bg=CARD_2,
+                fg=CYAN,
+                font_size="20sp"
+            )
+        )
+
+        stats.add_widget(
+            self.lbl_compasso_num
+        )
+
+        stats.add_widget(
+            self.lbl_tempo_num
+        )
+
+        stats.add_widget(
+            self.lbl_batidas
+        )
+
+        ritmo.add_widget(
+            stats
+        )
+
+        transpose = Card(
+            orientation="vertical",
+            padding=dp(10),
+            spacing=dp(5)
+        )
+
+        topo_trans = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(52)
+        )
+
+        topo_trans.add_widget(
+            SectionHeader(
+                "↕",
+                "TRANSPOSIÇÃO",
+                "Altere o tom da música",
+                CYAN
+            )
+        )
+
+        self.lbl_novo_tom = Label(
+            text="Novo tom:\n--",
+            color=CYAN,
+            font_size="12sp",
+            size_hint_x=None,
+            width=dp(83)
+        )
+
+        topo_trans.add_widget(
+            self.lbl_novo_tom
+        )
+
+        transpose.add_widget(
+            topo_trans
+        )
+
+        self.transpose_buttons = {}
+
+        transp_row = BoxLayout(
+            orientation="horizontal",
+            spacing=dp(5)
+        )
+
+        for semitons in (
+            -2,
+            -1,
+            0,
+            1,
+            2
+        ):
+
+            txt = (
+                f"+{semitons}"
+                if semitons > 0
+                else str(semitons)
+            )
+
+            btn = MixerButton(
+                text=txt,
+                bg=CARD_2
+            )
+
+            btn.bind(
+                on_release=(
+                    lambda _btn,
+                    s=semitons:
+                    self.controller
+                    .set_transposicao(s)
+                )
+            )
+
+            self.transpose_buttons[
+                semitons
+            ] = btn
+
+            transp_row.add_widget(
+                btn
+            )
+
+        transpose.add_widget(
+            transp_row
+        )
+
+        linha.add_widget(
+            ritmo
+        )
+
+        linha.add_widget(
+            transpose
+        )
+
+        self.content.add_widget(
+            linha
+        )
+
+
+    # ======================================================
+    # METRÔNOMO
+    # ======================================================
+
+    def _build_metronome(self):
+
+        card = Card(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(90),
             padding=dp(10),
             spacing=dp(8)
         )
 
-        texto = Label(
-            text=str(mensagem),
-            halign="center",
-            valign="middle"
-        )
-
-        texto.bind(
-            size=lambda w, s:
-            setattr(
-                w,
-                "text_size",
-                (s[0], None)
+        card.add_widget(
+            Label(
+                text="♩",
+                color=WHITE,
+                font_size="31sp",
+                size_hint_x=None,
+                width=dp(45)
             )
         )
 
-        btn = Button(
-            text="OK",
+        textos = BoxLayout(
+            orientation="vertical"
+        )
+
+        titulo = Label(
+            text="[b]METRÔNOMO[/b]",
+            markup=True,
+            halign="left",
+            font_size="16sp",
+            color=WHITE
+        )
+
+        subtitulo = Label(
+            text=(
+                "Mantenha o tempo "
+                "durante seus estudos"
+            ),
+            halign="left",
+            font_size="11sp",
+            color=TEXT_2
+        )
+
+        titulo.bind(
+            size=lambda obj, size:
+            setattr(
+                obj,
+                "text_size",
+                size
+            )
+        )
+
+        subtitulo.bind(
+            size=lambda obj, size:
+            setattr(
+                obj,
+                "text_size",
+                size
+            )
+        )
+
+        textos.add_widget(
+            titulo
+        )
+
+        textos.add_widget(
+            subtitulo
+        )
+
+        card.add_widget(
+            textos
+        )
+
+        self.btn_metronomo = (
+            MixerButton(
+                text="OFF",
+                size_hint_x=None,
+                width=dp(80),
+                bg=CARD_2
+            )
+        )
+
+        self.btn_metronomo.bind(
+            on_release=lambda *_:
+            self.controller
+            .toggle_metronomo()
+        )
+
+        card.add_widget(
+            self.btn_metronomo
+        )
+
+        self.lbl_metronomo_bpm = Label(
+            text="BPM: --",
+            size_hint_x=None,
+            width=dp(78),
+            color=CYAN,
+            font_size="13sp"
+        )
+
+        card.add_widget(
+            self.lbl_metronomo_bpm
+        )
+
+        self.content.add_widget(
+            card
+        )
+
+
+    # ======================================================
+    # BOTÕES FINAIS
+    # ======================================================
+
+    def _build_bottom(self):
+
+        linha = BoxLayout(
+            orientation="horizontal",
             size_hint_y=None,
-            height=dp(45)
+            height=dp(96),
+            spacing=dp(10)
         )
 
-        caixa.add_widget(
-            texto
+        btn_analisar = MixerButton(
+            text=(
+                "▥  ANALISAR E MIXAR\n"
+                "Separar, analisar e processar"
+            ),
+            bg=PURPLE,
+            font_size="15sp"
         )
 
-        caixa.add_widget(
-            btn
+        btn_salvar = MixerButton(
+            text=(
+                "↓  SALVAR / EXPORTAR\n"
+                "Salvar projeto ou exportar áudio"
+            ),
+            bg=CARD,
+            font_size="14sp"
         )
 
-        popup = Popup(
-            title="Discipulador Cristão",
-            content=caixa,
-            size_hint=(0.88, 0.45)
+        btn_analisar.bind(
+            on_release=lambda *_:
+            self.controller
+            .analisar_e_mixar()
         )
 
-        btn.bind(
-            on_release=popup.dismiss
+        btn_salvar.bind(
+            on_release=lambda *_:
+            self.controller
+            .salvar_exportar()
         )
 
-        popup.open()
+        linha.add_widget(
+            btn_analisar
+        )
+
+        linha.add_widget(
+            btn_salvar
+        )
+
+        self.content.add_widget(
+            linha
+        )
+
+        self.content.add_widget(
+            Widget(
+                size_hint_y=None,
+                height=dp(20)
+            )
+        )
+
+
+    # ======================================================
+    # EVENTOS
+    # ======================================================
+
+    def _seek_from_slider(
+        self,
+        slider,
+        touch
+    ):
+
+        if not slider.collide_point(
+            *touch.pos
+        ):
+            return
+
+        duracao = self.controller.duration
+
+        if duracao <= 0:
+            return
+
+        self.controller.seek(
+            slider.value * duracao
+        )
+
+
+    def _tick(
+        self,
+        dt
+    ):
+
+        self.controller.sync_audio_state()
+
+        self.refresh_from_controller()
+
+
+    # ======================================================
+    # ATUALIZAÇÃO
+    # ======================================================
+
+    def refresh_player_only(self):
+
+        c = self.controller
+
+        self.lbl_position.text = (
+            tempo_texto(
+                c.position
+            )
+        )
+
+        self.lbl_duration.text = (
+            tempo_texto(
+                c.duration
+            )
+        )
+
+        if c.duration > 0:
+
+            valor = (
+                c.position /
+                c.duration
+            )
+
+            self.slider_position.value = (
+                max(
+                    0,
+                    min(
+                        1,
+                        valor
+                    )
+                )
+            )
+
+        else:
+
+            self.slider_position.value = 0
+
+
+    def refresh_from_controller(
+        self
+    ):
+
+        c = self.controller
+
+        self.lbl_music.text = (
+            c.music_name
+        )
+
+        if c.last_error:
+
+            self.lbl_status.text = (
+                "Erro: "
+                + c.last_error
+            )
+
+        elif c.music_path:
+
+            self.lbl_status.text = (
+                "Música carregada • "
+                "Pronta para análise"
+            )
+
+        else:
+
+            self.lbl_status.text = (
+                "Selecione uma música "
+                "para iniciar"
+            )
+
+        self.btn_play.text = (
+            "Ⅱ"
+            if c.playing
+            else "▶"
+        )
+
+        self.chip_tom.set_value(
+            "Tom",
+            c.tonalidade
+        )
+
+        self.chip_bpm.set_value(
+            "BPM",
+            (
+                str(c.bpm)
+                if c.bpm
+                else "--"
+            ),
+            PURPLE
+        )
+
+        self.chip_compasso.set_value(
+            "Compasso",
+            c.compasso
+        )
+
+        self.refresh_player_only()
+
+        for row in (
+            self.stem_rows.values()
+        ):
+            row.refresh()
+
+        for indice, lbl in enumerate(
+            self.harmonic_labels
+        ):
+
+            if indice < len(
+                c.campo_harmonico
+            ):
+                lbl.text = (
+                    c.campo_harmonico[
+                        indice
+                    ]
+                )
+            else:
+                lbl.text = "--"
+
+        self.lbl_acorde.text = (
+            c.acorde_atual
+        )
+
+        self.lbl_proximos.text = (
+            "  |  ".join(
+                c.proximos_acordes
+            )
+            if c.proximos_acordes
+            else "-- | -- | -- | --"
+        )
+
+        self.lbl_compasso_num.text = (
+            "Compasso\n"
+            f"{c.numero_compasso}"
+        )
+
+        self.lbl_tempo_num.text = (
+            "Tempo\n"
+            f"{c.tempo_compasso}"
+        )
+
+        total_tempos = 4
+
+        try:
+            if "/" in c.compasso:
+                total_tempos = int(
+                    c.compasso.split(
+                        "/"
+                    )[0]
+                )
+        except Exception:
+            total_tempos = 4
+
+        total_tempos = max(
+            1,
+            min(
+                total_tempos,
+                12
+            )
+        )
+
+        pontos = []
+
+        for i in range(
+            1,
+            total_tempos + 1
+        ):
+
+            if (
+                c.tempo_compasso
+                and
+                i <= c.tempo_compasso
+            ):
+                pontos.append("●")
+            else:
+                pontos.append("○")
+
+        self.lbl_batidas.text = (
+            " ".join(pontos)
+        )
+
+        for semitons, btn in (
+            self.transpose_buttons.items()
+        ):
+
+            btn.background_color = (
+                PURPLE
+                if (
+                    semitons ==
+                    c.transposicao
+                )
+                else CARD_2
+            )
+
+        self.lbl_novo_tom.text = (
+            "Novo tom:\n"
+            f"{self._tom_transposto()}"
+        )
+
+        self.btn_metronomo.text = (
+            "ON"
+            if c.metronomo_ligado
+            else "OFF"
+        )
+
+        self.btn_metronomo.background_color = (
+            PURPLE
+            if c.metronomo_ligado
+            else CARD_2
+        )
+
+        self.lbl_metronomo_bpm.text = (
+            "BPM: "
+            + (
+                str(c.bpm)
+                if c.bpm
+                else "--"
+            )
+        )
+
+
+    def _tom_transposto(self):
+
+        texto = self.controller.tonalidade
+
+        if (
+            not texto
+            or texto == "--"
+        ):
+            return "--"
+
+        partes = texto.split()
+
+        nota = partes[0]
+
+        qualidade = (
+            " ".join(
+                partes[1:]
+            )
+        )
+
+        notas = [
+            "C",
+            "C#",
+            "D",
+            "D#",
+            "E",
+            "F",
+            "F#",
+            "G",
+            "G#",
+            "A",
+            "A#",
+            "B"
+        ]
+
+        equivalencias = {
+            "Db": "C#",
+            "Eb": "D#",
+            "Gb": "F#",
+            "Ab": "G#",
+            "Bb": "A#"
+        }
+
+        base = equivalencias.get(
+            nota,
+            nota
+        )
+
+        if base not in notas:
+            return texto
+
+        indice = notas.index(
+            base
+        )
+
+        novo = notas[
+            (
+                indice
+                +
+                self.controller
+                .transposicao
+            )
+            % 12
+        ]
+
+        if qualidade:
+            return (
+                novo
+                + " "
+                + qualidade
+            )
+
+        return novo
+
+
+# ==========================================================
+# APP
+# ==========================================================
+
+class CrogerMixerApp(App):
+
+    title = "CROGER MIXER"
+
+    def build(self):
+
+        self.controller = (
+            MixerController()
+        )
+
+        return CrogerMixerScreen(
+            self.controller
+        )
+
+
+    def on_stop(self):
+
+        if hasattr(
+            self,
+            "controller"
+        ):
+            self.controller.release()
 
 
 if __name__ == "__main__":
-    DiscipuladorCristaoApp().run()
+
+    CrogerMixerApp().run()

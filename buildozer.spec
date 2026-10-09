@@ -1,15 +1,15 @@
 [app]
 
-title = Discipulador Cristão V2
+title = CROGER MIXER
 
-package.name = discipuladorcristaov2
+package.name = crogermixer
 package.domain = com.croger
 
 source.dir = .
 
 source.include_exts = py,png,jpg,jpeg,kv,atlas,txt,json,java,xml
 
-source.exclude_dirs = .git,.buildozer,bin,__pycache__,ci,.github
+source.exclude_dirs = .git,.buildozer,bin,__pycache__,ci,.github,BACKUP_BASE_FUNCIONAL,android_src,android_res,devocionais
 
 version = 1.0.0
 
@@ -33,12 +33,10 @@ android.ndk = 29
 
 android.archs = arm64-v8a
 
-android.permissions = READ_CONTACTS,SYSTEM_ALERT_WINDOW
+android.permissions =
 
 android.accept_sdk_license = True
 
-android.add_src = android_src
-android.extra_manifest_application_xml = android_res/extra_application.xml
 
 p4a.branch = develop
 p4a.source_dir = /home/runner/p4a

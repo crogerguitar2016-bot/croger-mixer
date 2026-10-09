@@ -1,4 +1,0 @@
-<service
-    android:name="com.croger.discipuladorcristaov2.OverlayService"
-    android:enabled="true"
-    android:exported="false" />
