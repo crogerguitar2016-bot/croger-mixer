@@ -347,7 +347,7 @@ class StemRow(Card):
 
         self.slider = Slider(
             min=0,
-            max=1.5,
+            max=1.0,
             value=(
                 controller
                 .stems[stem]["volume"]

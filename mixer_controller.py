@@ -1,3 +1,10 @@
+import threading
+import time
+from pathlib import Path
+
+from kivy.clock import Clock
+from motor_client import CrogerMotorClient
+
 class MixerController:
 
     STEMS = (
@@ -35,6 +42,12 @@ class MixerController:
 
         self.audio_engine = None
         self.last_error = None
+
+        self.motor = CrogerMotorClient()
+
+        self.job_id = None
+        self.processando = False
+        self.status_message = None
 
         self.stems = {
 
@@ -147,6 +160,11 @@ class MixerController:
             or not engine.is_loaded
         ):
             return
+
+        try:
+            engine.sync_stems()
+        except Exception:
+            pass
 
         self.playing = (
             engine.is_playing
@@ -338,11 +356,13 @@ class MixerController:
             0.0,
             min(
                 float(volume),
-                1.5
+                1.0
             )
         )
 
         self.stems[stem]["volume"] = volume
+
+        self._aplicar_mix_real()
 
         self._notify()
 
@@ -361,6 +381,8 @@ class MixerController:
             not atual
         )
 
+        self._aplicar_mix_real()
+
         self._notify()
 
 
@@ -377,6 +399,8 @@ class MixerController:
         self.stems[stem]["solo"] = (
             not atual
         )
+
+        self._aplicar_mix_real()
 
         self._notify()
 
@@ -407,6 +431,30 @@ class MixerController:
             return 0.0
 
         return dados["volume"]
+
+
+    def _aplicar_mix_real(self):
+
+        engine = self.audio_engine
+
+        if (
+            engine is None
+            or not getattr(
+                engine,
+                "stems_loaded",
+                False
+            )
+        ):
+            return
+
+        for stem in self.STEMS:
+
+            engine.set_stem_volume(
+                stem,
+                self.volume_efetivo(
+                    stem
+                )
+            )
 
 
     # =====================================================
@@ -526,9 +574,359 @@ class MixerController:
 
     def analisar_e_mixar(self):
 
-        print(
-            "CROGER MIXER:"
-            " analisar_e_mixar()"
+        if self.processando:
+            return False
+
+        if not self.music_path:
+            self.audio_error(
+                "Selecione uma música primeiro."
+            )
+            return False
+
+        self.processando = True
+        self.last_error = None
+        self.status_message = (
+            "Procurando stems separados..."
+        )
+
+        self._notify()
+
+        threading.Thread(
+            target=self._carregar_stems_worker,
+            daemon=True
+        ).start()
+
+        return True
+
+
+    def _status_worker(
+        self,
+        mensagem
+    ):
+
+        self.status_message = str(
+            mensagem
+        )
+
+        Clock.schedule_once(
+            lambda dt:
+            self._notify(),
+            0
+        )
+
+
+    def _carregar_stems_worker(self):
+
+        try:
+
+            self._status_worker(
+                "Consultando motor CROGER MIXER..."
+            )
+
+            dados = self.motor.state()
+
+            jobs = dados.get(
+                "jobs",
+                {}
+            )
+
+            nome_alvo = Path(
+                self.music_name
+            ).name
+
+            job = None
+
+            # ----------------------------------------------
+            # PROCURAR SEPARAÇÃO JÁ EXISTENTE
+            # ----------------------------------------------
+
+            encontrados = []
+
+            for item in jobs.values():
+
+                if (
+                    item.get("status")
+                    != "concluido"
+                ):
+                    continue
+
+                arquivo = item.get(
+                    "arquivo",
+                    ""
+                )
+
+                if (
+                    Path(arquivo).name
+                    == nome_alvo
+                ):
+
+                    encontrados.append(
+                        item
+                    )
+
+            if encontrados:
+
+                job = max(
+                    encontrados,
+                    key=lambda x:
+                    x.get(
+                        "finalizado_em",
+                        0
+                    )
+                )
+
+                job_id = job["id"]
+
+                self._status_worker(
+                    "Separação existente encontrada."
+                )
+
+            else:
+
+                # ------------------------------------------
+                # MÚSICA NOVA
+                # ------------------------------------------
+
+                self._status_worker(
+                    "Preparando música para envio..."
+                )
+
+                pasta_upload = (
+                    Path(
+                        self.audio_engine
+                        .app_files_dir
+                    )
+                    /
+                    "croger_upload"
+                )
+
+                pasta_upload.mkdir(
+                    parents=True,
+                    exist_ok=True
+                )
+
+                arquivo_local = (
+                    pasta_upload
+                    /
+                    nome_alvo
+                )
+
+                self.audio_engine.copy_selected_audio_to(
+                    arquivo_local
+                )
+
+                self._status_worker(
+                    "Enviando música ao motor..."
+                )
+
+                def progresso_upload(
+                    enviado,
+                    total
+                ):
+
+                    if total <= 0:
+                        return
+
+                    percentual = int(
+                        enviado
+                        * 100
+                        / total
+                    )
+
+                    self._status_worker(
+                        f"Enviando música: "
+                        f"{percentual}%"
+                    )
+
+                resposta_upload = (
+                    self.motor.upload_file(
+                        arquivo_local,
+                        filename=nome_alvo,
+                        progresso=progresso_upload
+                    )
+                )
+
+                if not resposta_upload.get(
+                    "ok"
+                ):
+
+                    raise RuntimeError(
+                        "Falha no envio da música."
+                    )
+
+                self._status_worker(
+                    "Iniciando separação Demucs..."
+                )
+
+                resposta = (
+                    self.motor
+                    .iniciar_separacao_por_nome(
+                        nome_alvo
+                    )
+                )
+
+                job_id = resposta.get(
+                    "job_id"
+                )
+
+                if not job_id:
+
+                    raise RuntimeError(
+                        "Motor não retornou job_id."
+                    )
+
+                self.job_id = job_id
+
+                # ------------------------------------------
+                # ESPERAR DEMUCS
+                # ------------------------------------------
+
+                while True:
+
+                    dados_job = (
+                        self.motor.job(
+                            job_id
+                        )
+                    )
+
+                    job = dados_job.get(
+                        "job",
+                        {}
+                    )
+
+                    status = job.get(
+                        "status"
+                    )
+
+                    progresso = job.get(
+                        "progresso",
+                        0
+                    )
+
+                    mensagem = job.get(
+                        "mensagem",
+                        status
+                    )
+
+                    self._status_worker(
+                        f"{mensagem} "
+                        f"({progresso}%)"
+                    )
+
+                    if status == "concluido":
+                        break
+
+                    if status == "erro":
+
+                        raise RuntimeError(
+                            job.get(
+                                "erro",
+                                mensagem
+                            )
+                        )
+
+                    time.sleep(
+                        15
+                    )
+
+            # ----------------------------------------------
+            # BAIXAR STEMS
+            # ----------------------------------------------
+
+            self._status_worker(
+                "Baixando Voz, Bateria, "
+                "Baixo e Outros..."
+            )
+
+            pasta = (
+                Path(
+                    self.audio_engine
+                    .app_files_dir
+                )
+                /
+                "croger_stems"
+                /
+                job_id
+            )
+
+            caminhos = (
+                self.motor.baixar_stems(
+                    job_id,
+                    pasta
+                )
+            )
+
+            Clock.schedule_once(
+                lambda dt:
+                self._finalizar_stems(
+                    job_id,
+                    caminhos
+                ),
+                0
+            )
+
+        except Exception as exc:
+
+            mensagem = str(
+                exc
+            )
+
+            Clock.schedule_once(
+                lambda dt:
+                self._erro_processamento(
+                    mensagem
+                ),
+                0
+            )
+
+
+    def _finalizar_stems(
+        self,
+        job_id,
+        caminhos
+    ):
+
+        if not self.audio_engine.load_stems(
+            caminhos
+        ):
+
+            self.processando = False
+            return
+
+        self.job_id = job_id
+
+        self._aplicar_mix_real()
+
+        self.position = 0.0
+
+        self.duration = (
+            self.audio_engine
+            .duration_ms
+            / 1000.0
+        )
+
+        self.playing = False
+        self.processando = False
+        self.last_error = None
+
+        self.status_message = (
+            "Mixer pronto: "
+            "Voz, Bateria, Baixo e Outros."
+        )
+
+        self._notify()
+
+
+    def _erro_processamento(
+        self,
+        mensagem
+    ):
+
+        self.processando = False
+        self.status_message = None
+
+        self.audio_error(
+            mensagem
         )
 
 

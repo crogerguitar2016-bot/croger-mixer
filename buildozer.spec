@@ -33,7 +33,7 @@ android.ndk = 29
 
 android.archs = arm64-v8a
 
-android.permissions =
+android.permissions = INTERNET
 
 android.accept_sdk_license = True
 

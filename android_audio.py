@@ -1,9 +1,18 @@
+from pathlib import Path
+
 from kivy.utils import platform
 
 
 class AndroidAudioEngine:
 
     REQUEST_AUDIO = 4817
+
+    STEMS = (
+        "voz",
+        "bateria",
+        "baixo",
+        "outros",
+    )
 
     def __init__(
         self,
@@ -19,11 +28,15 @@ class AndroidAudioEngine:
         )
 
         self.player = None
+
+        self.stem_players = {}
+
         self.current_uri = None
         self.current_name = None
 
         self._activity_module = None
         self._activity = None
+        self.autoclass = None
 
         if not self.available:
             return
@@ -54,20 +67,37 @@ class AndroidAudioEngine:
             self._erro(exc)
 
 
-    # =====================================================
-    # SELETOR DE MÚSICA
-    # =====================================================
+    # ======================================================
+    # DIRETÓRIO PRIVADO DO APK
+    # ======================================================
+
+    @property
+    def app_files_dir(self):
+
+        if not self.available:
+            return "."
+
+        return str(
+            self._activity
+            .getFilesDir()
+            .getAbsolutePath()
+        )
+
+
+    # ======================================================
+    # SELETOR
+    # ======================================================
 
     def open_picker(self):
 
         if not self.available:
             self._erro(
-                "Seletor disponível somente "
-                "no Android."
+                "Seletor disponível somente no Android."
             )
             return False
 
         try:
+
             Intent = self.autoclass(
                 "android.content.Intent"
             )
@@ -118,6 +148,7 @@ class AndroidAudioEngine:
             return
 
         try:
+
             Activity = self.autoclass(
                 "android.app.Activity"
             )
@@ -130,24 +161,33 @@ class AndroidAudioEngine:
             if uri is None:
                 return
 
-            self._persistir_permissao(uri)
+            self._persistir_permissao(
+                uri
+            )
 
-            self.load_uri(uri)
+            self.load_uri(
+                uri
+            )
 
         except Exception as exc:
             self._erro(exc)
 
 
-    # =====================================================
-    # CARREGAMENTO
-    # =====================================================
+    # ======================================================
+    # ORIGINAL
+    # ======================================================
 
-    def load_uri(self, uri):
+    def load_uri(
+        self,
+        uri
+    ):
 
         if not self.available:
             return False
 
         try:
+
+            self._release_stems()
             self._release_player()
 
             MediaPlayer = self.autoclass(
@@ -169,9 +209,7 @@ class AndroidAudioEngine:
             self.current_name = (
                 self._get_display_name(uri)
                 or
-                str(
-                    uri.getLastPathSegment()
-                )
+                str(uri.getLastPathSegment())
                 or
                 "Música"
             )
@@ -183,6 +221,7 @@ class AndroidAudioEngine:
             if callable(
                 self.on_loaded
             ):
+
                 self.on_loaded(
                     self.current_name,
                     str(uri.toString()),
@@ -196,17 +235,318 @@ class AndroidAudioEngine:
             return False
 
 
-    # =====================================================
-    # PLAYER
-    # =====================================================
+    # ======================================================
+    # COPIAR MÚSICA SELECIONADA
+    # ======================================================
 
-    def play(self):
+    def copy_selected_audio_to(
+        self,
+        destino
+    ):
 
-        if self.player is None:
+        if (
+            not self.available
+            or self.current_uri is None
+        ):
+            raise RuntimeError(
+                "Nenhuma música selecionada."
+            )
+
+        destino = Path(
+            destino
+        )
+
+        destino.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        resolver = (
+            self._activity
+            .getContentResolver()
+        )
+
+        entrada = (
+            resolver.openInputStream(
+                self.current_uri
+            )
+        )
+
+        if entrada is None:
+            raise RuntimeError(
+                "Não foi possível abrir a música."
+            )
+
+        buffer = bytearray(
+            64 * 1024
+        )
+
+        try:
+
+            with destino.open(
+                "wb"
+            ) as saida:
+
+                while True:
+
+                    quantidade = int(
+                        entrada.read(
+                            buffer
+                        )
+                    )
+
+                    if quantidade <= 0:
+                        break
+
+                    saida.write(
+                        buffer[:quantidade]
+                    )
+
+        finally:
+
+            try:
+                entrada.close()
+            except Exception:
+                pass
+
+        if (
+            not destino.exists()
+            or destino.stat().st_size <= 0
+        ):
+            raise RuntimeError(
+                "A cópia da música falhou."
+            )
+
+        return str(
+            destino
+        )
+
+
+    # ======================================================
+    # 4 STEMS
+    # ======================================================
+
+    def load_stems(
+        self,
+        caminhos
+    ):
+
+        if not self.available:
             return False
 
         try:
+
+            self._release_stems()
+
+            MediaPlayer = self.autoclass(
+                "android.media.MediaPlayer"
+            )
+
+            novos = {}
+
+            for stem in self.STEMS:
+
+                caminho = caminhos.get(
+                    stem
+                )
+
+                if not caminho:
+                    raise RuntimeError(
+                        f"Caminho ausente: {stem}"
+                    )
+
+                caminho = str(
+                    Path(caminho)
+                )
+
+                if not Path(caminho).exists():
+
+                    raise FileNotFoundError(
+                        caminho
+                    )
+
+                player = MediaPlayer()
+
+                player.setDataSource(
+                    caminho
+                )
+
+                player.prepare()
+
+                novos[stem] = player
+
+            self.stem_players = novos
+
+            if self.player is not None:
+
+                try:
+                    if self.player.isPlaying():
+                        self.player.pause()
+                except Exception:
+                    pass
+
+                try:
+                    self.player.seekTo(0)
+                except Exception:
+                    pass
+
+            return True
+
+        except Exception as exc:
+
+            self._release_stems()
+            self._erro(exc)
+
+            return False
+
+
+    @property
+    def stems_loaded(self):
+
+        return (
+            len(self.stem_players)
+            == 4
+        )
+
+
+    def _master_player(self):
+
+        if self.stems_loaded:
+
+            return (
+                self.stem_players.get(
+                    "outros"
+                )
+                or
+                next(
+                    iter(
+                        self.stem_players.values()
+                    )
+                )
+            )
+
+        return self.player
+
+
+    def set_stem_volume(
+        self,
+        stem,
+        volume
+    ):
+
+        player = self.stem_players.get(
+            stem
+        )
+
+        if player is None:
+            return False
+
+        try:
+
+            volume = max(
+                0.0,
+                min(
+                    1.0,
+                    float(volume)
+                )
+            )
+
+            player.setVolume(
+                volume,
+                volume
+            )
+
+            return True
+
+        except Exception as exc:
+            self._erro(exc)
+            return False
+
+
+    def sync_stems(
+        self,
+        tolerancia_ms=120
+    ):
+
+        if not self.stems_loaded:
+            return
+
+        master = self._master_player()
+
+        if master is None:
+            return
+
+        try:
+
+            referencia = int(
+                master.getCurrentPosition()
+            )
+
+            tocando = bool(
+                master.isPlaying()
+            )
+
+            if not tocando:
+                return
+
+            for player in (
+                self.stem_players.values()
+            ):
+
+                if player == master:
+                    continue
+
+                pos = int(
+                    player.getCurrentPosition()
+                )
+
+                if abs(
+                    pos - referencia
+                ) > tolerancia_ms:
+
+                    player.seekTo(
+                        referencia
+                    )
+
+        except Exception:
+            pass
+
+
+    # ======================================================
+    # PLAYER
+    # ======================================================
+
+    def play(self):
+
+        try:
+
+            if self.stems_loaded:
+
+                master = self._master_player()
+
+                pos = int(
+                    master.getCurrentPosition()
+                )
+
+                for player in (
+                    self.stem_players.values()
+                ):
+                    player.seekTo(
+                        pos
+                    )
+
+                for player in (
+                    self.stem_players.values()
+                ):
+                    player.start()
+
+                return True
+
+            if self.player is None:
+                return False
+
             self.player.start()
+
             return True
 
         except Exception as exc:
@@ -216,10 +556,22 @@ class AndroidAudioEngine:
 
     def pause(self):
 
-        if self.player is None:
-            return False
-
         try:
+
+            if self.stems_loaded:
+
+                for player in (
+                    self.stem_players.values()
+                ):
+
+                    if player.isPlaying():
+                        player.pause()
+
+                return True
+
+            if self.player is None:
+                return False
+
             if self.player.isPlaying():
                 self.player.pause()
 
@@ -232,28 +584,32 @@ class AndroidAudioEngine:
 
     def play_pause(self):
 
-        if self.player is None:
-            return False
+        if self.is_playing:
+            return self.pause()
 
-        try:
-            if self.player.isPlaying():
-                self.player.pause()
-            else:
-                self.player.start()
-
-            return True
-
-        except Exception as exc:
-            self._erro(exc)
-            return False
+        return self.play()
 
 
     def stop(self):
 
-        if self.player is None:
-            return False
-
         try:
+
+            if self.stems_loaded:
+
+                for player in (
+                    self.stem_players.values()
+                ):
+
+                    if player.isPlaying():
+                        player.pause()
+
+                    player.seekTo(0)
+
+                return True
+
+            if self.player is None:
+                return False
+
             if self.player.isPlaying():
                 self.player.pause()
 
@@ -271,24 +627,38 @@ class AndroidAudioEngine:
         milliseconds
     ):
 
-        if self.player is None:
-            return False
-
         try:
-            destino = int(
-                max(
-                    0,
-                    milliseconds
-                )
+
+            destino = max(
+                0,
+                int(milliseconds)
             )
 
-            duracao = self.duration_ms
+            duracao = (
+                self.duration_ms
+            )
 
             if duracao > 0:
+
                 destino = min(
                     destino,
                     duracao
                 )
+
+            if self.stems_loaded:
+
+                for player in (
+                    self.stem_players.values()
+                ):
+
+                    player.seekTo(
+                        destino
+                    )
+
+                return True
+
+            if self.player is None:
+                return False
 
             self.player.seekTo(
                 destino
@@ -301,14 +671,16 @@ class AndroidAudioEngine:
             return False
 
 
-    # =====================================================
+    # ======================================================
     # ESTADO
-    # =====================================================
+    # ======================================================
 
     @property
     def is_loaded(self):
 
         return (
+            self.stems_loaded
+            or
             self.player is not None
         )
 
@@ -316,14 +688,15 @@ class AndroidAudioEngine:
     @property
     def is_playing(self):
 
-        if self.player is None:
+        player = self._master_player()
+
+        if player is None:
             return False
 
         try:
             return bool(
-                self.player.isPlaying()
+                player.isPlaying()
             )
-
         except Exception:
             return False
 
@@ -331,18 +704,18 @@ class AndroidAudioEngine:
     @property
     def position_ms(self):
 
-        if self.player is None:
+        player = self._master_player()
+
+        if player is None:
             return 0
 
         try:
             return max(
                 0,
                 int(
-                    self.player
-                    .getCurrentPosition()
+                    player.getCurrentPosition()
                 )
             )
-
         except Exception:
             return 0
 
@@ -350,24 +723,25 @@ class AndroidAudioEngine:
     @property
     def duration_ms(self):
 
-        if self.player is None:
+        player = self._master_player()
+
+        if player is None:
             return 0
 
         try:
             return max(
                 0,
                 int(
-                    self.player.getDuration()
+                    player.getDuration()
                 )
             )
-
         except Exception:
             return 0
 
 
-    # =====================================================
-    # URI / NOME
-    # =====================================================
+    # ======================================================
+    # URI
+    # ======================================================
 
     def _persistir_permissao(
         self,
@@ -375,6 +749,7 @@ class AndroidAudioEngine:
     ):
 
         try:
+
             Intent = self.autoclass(
                 "android.content.Intent"
             )
@@ -399,6 +774,7 @@ class AndroidAudioEngine:
     ):
 
         try:
+
             OpenableColumns = (
                 self.autoclass(
                     "android.provider.OpenableColumns"
@@ -422,6 +798,7 @@ class AndroidAudioEngine:
                 return None
 
             try:
+
                 if not cursor.moveToFirst():
                     return None
 
@@ -447,9 +824,23 @@ class AndroidAudioEngine:
             return None
 
 
-    # =====================================================
-    # FINALIZAÇÃO
-    # =====================================================
+    # ======================================================
+    # RELEASE
+    # ======================================================
+
+    def _release_stems(self):
+
+        for player in (
+            self.stem_players.values()
+        ):
+
+            try:
+                player.release()
+            except Exception:
+                pass
+
+        self.stem_players = {}
+
 
     def _release_player(self):
 
@@ -466,6 +857,7 @@ class AndroidAudioEngine:
 
     def release(self):
 
+        self._release_stems()
         self._release_player()
 
         if self._activity_module:
@@ -479,9 +871,9 @@ class AndroidAudioEngine:
                 pass
 
 
-    # =====================================================
+    # ======================================================
     # ERRO
-    # =====================================================
+    # ======================================================
 
     def _erro(
         self,
@@ -500,6 +892,7 @@ class AndroidAudioEngine:
         if callable(
             self.on_error
         ):
+
             self.on_error(
                 mensagem
             )
