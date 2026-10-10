@@ -1610,10 +1610,20 @@ class CrogerMixerScreen(
                 + c.last_error
             )
 
+        elif getattr(
+            c,
+            "status_message",
+            None
+        ):
+
+            self.lbl_status.text = (
+                c.status_message
+            )
+
         elif c.music_path:
 
             self.lbl_status.text = (
-                "Música carregada • "
+                "Música carregada - "
                 "Pronta para análise"
             )
 

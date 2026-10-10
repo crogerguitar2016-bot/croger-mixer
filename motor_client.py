@@ -118,6 +118,17 @@ class CrogerMotorClient:
         )
 
 
+    def analysis(
+        self,
+        job_id
+    ):
+
+        return self._get_json(
+            f"/analysis/{job_id}",
+            timeout=30
+        )
+
+
     def iniciar_separacao_por_nome(
         self,
         filename

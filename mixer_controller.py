@@ -49,6 +49,10 @@ class MixerController:
         self.processando = False
         self.status_message = None
 
+        self.analysis_data = {}
+        self.acordes_timeline = []
+        self.bpm_decimal = 0.0
+
         self.stems = {
 
             "voz": {
@@ -130,6 +134,23 @@ class MixerController:
 
         self.playing = False
         self.last_error = None
+        self.status_message = None
+
+        self.analysis_data = {}
+        self.acordes_timeline = []
+
+        self.tonalidade = "--"
+        self.bpm = 0
+        self.bpm_decimal = 0.0
+        self.compasso = "--"
+
+        self.campo_harmonico = []
+
+        self.acorde_atual = "--"
+        self.proximos_acordes = []
+
+        self.numero_compasso = 0
+        self.tempo_compasso = 0
 
         self._notify()
 
@@ -179,6 +200,8 @@ class MixerController:
             engine.duration_ms
             / 1000.0
         )
+
+        self._sincronizar_analise_posicao()
 
 
     # =====================================================
@@ -568,6 +591,221 @@ class MixerController:
         self._notify()
 
 
+    def aplicar_analise_servidor(
+        self,
+        analise
+    ):
+
+        if not isinstance(
+            analise,
+            dict
+        ):
+            return False
+
+        self.analysis_data = dict(
+            analise
+        )
+
+        self.tonalidade = str(
+            analise.get(
+                "tonalidade",
+                "--"
+            )
+            or "--"
+        )
+
+        try:
+
+            self.bpm_decimal = float(
+                analise.get(
+                    "bpm_decimal",
+                    analise.get(
+                        "bpm",
+                        0
+                    )
+                )
+                or 0
+            )
+
+        except Exception:
+
+            self.bpm_decimal = 0.0
+
+        try:
+
+            self.bpm = int(
+                round(
+                    float(
+                        analise.get(
+                            "bpm",
+                            self.bpm_decimal
+                        )
+                        or 0
+                    )
+                )
+            )
+
+        except Exception:
+
+            self.bpm = 0
+
+        self.compasso = str(
+            analise.get(
+                "compasso",
+                "--"
+            )
+            or "--"
+        )
+
+        campo = analise.get(
+            "campo_harmonico",
+            []
+        )
+
+        self.campo_harmonico = (
+            list(campo)
+            if isinstance(
+                campo,
+                list
+            )
+            else []
+        )
+
+        acordes = analise.get(
+            "acordes",
+            []
+        )
+
+        self.acordes_timeline = (
+            list(acordes)
+            if isinstance(
+                acordes,
+                list
+            )
+            else []
+        )
+
+        self._sincronizar_analise_posicao()
+
+        return True
+
+
+    def _sincronizar_analise_posicao(
+        self
+    ):
+
+        timeline = (
+            self.acordes_timeline
+        )
+
+        if not timeline:
+
+            self.acorde_atual = "--"
+            self.proximos_acordes = []
+            return
+
+        posicao = max(
+            0.0,
+            float(
+                self.position
+            )
+        )
+
+        indice_atual = 0
+
+        for indice, item in enumerate(
+            timeline
+        ):
+
+            try:
+
+                inicio = float(
+                    item.get(
+                        "inicio",
+                        0
+                    )
+                )
+
+                fim = float(
+                    item.get(
+                        "fim",
+                        inicio
+                    )
+                )
+
+            except Exception:
+                continue
+
+            if (
+                inicio
+                <= posicao
+                < fim
+            ):
+
+                indice_atual = indice
+                break
+
+            if posicao >= inicio:
+
+                indice_atual = indice
+
+        item_atual = timeline[
+            indice_atual
+        ]
+
+        self.acorde_atual = str(
+            item_atual.get(
+                "acorde",
+                "--"
+            )
+        )
+
+        proximos = []
+
+        for item in timeline[
+            indice_atual + 1:
+        ]:
+
+            acorde = str(
+                item.get(
+                    "acorde",
+                    ""
+                )
+            )
+
+            if not acorde:
+                continue
+
+            if (
+                acorde
+                ==
+                self.acorde_atual
+            ):
+                continue
+
+            if (
+                proximos
+                and
+                acorde
+                ==
+                proximos[-1]
+            ):
+                continue
+
+            proximos.append(
+                acorde
+            )
+
+            if len(
+                proximos
+            ) >= 4:
+                break
+
+        self.proximos_acordes = (
+            proximos
+        )
+
+
     # =====================================================
     # PROCESSAMENTO FUTURO
     # =====================================================
@@ -856,11 +1094,36 @@ class MixerController:
                 )
             )
 
+            analise = None
+
+            try:
+
+                self._status_worker(
+                    "Carregando análise musical..."
+                )
+
+                resposta_analise = (
+                    self.motor.analysis(
+                        job_id
+                    )
+                )
+
+                analise = (
+                    resposta_analise.get(
+                        "analysis"
+                    )
+                )
+
+            except Exception:
+
+                analise = None
+
             Clock.schedule_once(
                 lambda dt:
                 self._finalizar_stems(
                     job_id,
-                    caminhos
+                    caminhos,
+                    analise
                 ),
                 0
             )
@@ -883,7 +1146,8 @@ class MixerController:
     def _finalizar_stems(
         self,
         job_id,
-        caminhos
+        caminhos,
+        analise=None
     ):
 
         if not self.audio_engine.load_stems(
@@ -897,6 +1161,12 @@ class MixerController:
 
         self._aplicar_mix_real()
 
+        if analise:
+
+            self.aplicar_analise_servidor(
+                analise
+            )
+
         self.position = 0.0
 
         self.duration = (
@@ -909,10 +1179,20 @@ class MixerController:
         self.processando = False
         self.last_error = None
 
-        self.status_message = (
-            "Mixer pronto: "
-            "Voz, Bateria, Baixo e Outros."
-        )
+        if analise:
+
+            self.status_message = (
+                "Mixer e análise prontos: "
+                f"{self.tonalidade} • "
+                f"{self.bpm} BPM"
+            )
+
+        else:
+
+            self.status_message = (
+                "Mixer pronto. "
+                "Análise musical ainda não disponível."
+            )
 
         self._notify()
 
