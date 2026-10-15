@@ -284,6 +284,121 @@ class VectorIcon(Widget):
                     width=dp(1.5)
                 )
 
+            elif self.icon_type == "menu":
+                lw = w * 0.7
+                lx = cx - lw / 2
+                for py in [cy - h * 0.25, cy, cy + h * 0.25]:
+                    Line(
+                        points=[lx, py, lx + lw, py],
+                        width=dp(1.5)
+                    )
+
+            elif self.icon_type == "configuracoes":
+                cr = min(w, h) * 0.2
+                Ellipse(
+                    pos=(cx - cr, cy - cr),
+                    size=(2 * cr, 2 * cr)
+                )
+                ew = w * 0.12
+                eh = h * 0.12
+                dist = min(w, h) * 0.32
+                Rectangle(pos=(cx - ew/2, cy + dist - eh/2), size=(ew, eh))
+                Rectangle(pos=(cx - ew/2, cy - dist - eh/2), size=(ew, eh))
+                Rectangle(pos=(cx - dist - ew/2, cy - eh/2), size=(ew, eh))
+                Rectangle(pos=(cx + dist - ew/2, cy - eh/2), size=(ew, eh))
+
+            elif self.icon_type == "selecionar":
+                d = min(w, h) * 0.18
+                gap = h * 0.28
+                for py in [cy - gap, cy, cy + gap]:
+                    Ellipse(
+                        pos=(cx - d / 2, py - d / 2),
+                        size=(d, d)
+                    )
+
+            elif self.icon_type == "shuffle":
+                Line(
+                    points=[x + w * 0.2, y + h * 0.3, x + w * 0.4, y + h * 0.3, x + w * 0.6, y + h * 0.7, x + w * 0.8, y + h * 0.7],
+                    width=dp(1.5)
+                )
+                Line(
+                    points=[x + w * 0.2, y + h * 0.7, x + w * 0.4, y + h * 0.7, x + w * 0.6, y + h * 0.3, x + w * 0.8, y + h * 0.3],
+                    width=dp(1.5)
+                )
+
+            elif self.icon_type == "voltar":
+                Rectangle(
+                    pos=(x + w * 0.2, y + h * 0.25),
+                    size=(w * 0.12, h * 0.5)
+                )
+                Triangle(
+                    points=[
+                        x + w * 0.8, y + h * 0.2,
+                        x + w * 0.35, cy,
+                        x + w * 0.8, y + h * 0.8
+                    ]
+                )
+
+            elif self.icon_type == "avancar":
+                Triangle(
+                    points=[
+                        x + w * 0.2, y + h * 0.2,
+                        x + w * 0.65, cy,
+                        x + w * 0.2, y + h * 0.8
+                    ]
+                )
+                Rectangle(
+                    pos=(x + w * 0.68, y + h * 0.25),
+                    size=(w * 0.12, h * 0.5)
+                )
+
+            elif self.icon_type == "stop":
+                sw = min(w, h) * 0.5
+                Rectangle(
+                    pos=(cx - sw / 2, cy - sw / 2),
+                    size=(sw, sw)
+                )
+
+            elif self.icon_type == "repeat":
+                r = min(w, h) * 0.28
+                Line(
+                    circle=(cx, cy, r, 30, 330),
+                    width=dp(1.5)
+                )
+                ax = cx + r * 0.5
+                ay = cy + r * 0.866
+                Triangle(
+                    points=[
+                        ax - w * 0.08, ay + h * 0.05,
+                        ax + w * 0.08, ay + h * 0.05,
+                        ax, ay + h * 0.18
+                    ]
+                )
+
+            elif self.icon_type == "play":
+                Triangle(
+                    points=[
+                        x + w * 0.25, y + h * 0.15,
+                        x + w * 0.8, cy,
+                        x + w * 0.25, y + h * 0.85
+                    ]
+                )
+
+            elif self.icon_type == "pause":
+                bar_w = w * 0.22
+                bar_h = h * 0.6
+                gap = w * 0.16
+                total_w = 2 * bar_w + gap
+                start_x = cx - total_w / 2
+                Rectangle(
+                    pos=(start_x, cy - bar_h / 2),
+                    size=(bar_w, bar_h)
+                )
+                Rectangle(
+                    pos=(start_x + bar_w + gap, cy - bar_h / 2),
+                    size=(bar_w, bar_h)
+                )
+
 
 # ==========================================================
 # CARD
@@ -375,6 +490,43 @@ class MixerButton(Button):
         self.border = (0, 0, 0, 0)
 
         self.font_size = "14sp"
+
+
+class VectorIconButton(MixerButton):
+
+    def __init__(
+        self,
+        icon_type="voz",
+        icon_color=WHITE,
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        self.text = ""
+        self.icon_type = icon_type
+        self.icon_color = icon_color
+
+        self.icon = VectorIcon(
+            icon_type=self.icon_type,
+            color=self.icon_color
+        )
+        self.add_widget(self.icon)
+
+        self.bind(
+            pos=self._update_icon,
+            size=self._update_icon
+        )
+
+    def _update_icon(self, *args):
+        margin = dp(10)
+        self.icon.pos = (self.x + margin, self.y + margin)
+        self.icon.size = (self.width - 2 * margin, self.height - 2 * margin)
+
+    def set_icon(self, icon_type):
+        self.icon_type = icon_type
+        self.icon.icon_type = icon_type
+        self.icon._draw_icon()
 
 
 class BottomActionButton(Card):
@@ -600,7 +752,7 @@ class StemRow(Card):
         super().__init__(
             orientation="horizontal",
             size_hint_y=None,
-            height=dp(64),
+            height=dp(78),
             spacing=dp(7),
             padding=(
                 dp(8),
@@ -626,8 +778,8 @@ class StemRow(Card):
             text=f"[b]{nome}[/b]",
             markup=True,
             size_hint_x=None,
-            width=dp(70),
-            font_size="13sp",
+            width=dp(54),
+            font_size="11sp",
             color=WHITE
         )
 
@@ -643,9 +795,10 @@ class StemRow(Card):
 
         self.slider.value_track = True
         self.slider.value_track_color = accent
+        self.slider.value_track_width = dp(6)
         self.slider.cursor_size = (
-            dp(20),
-            dp(20)
+            dp(34),
+            dp(34)
         )
 
         self.lbl_percent = Label(
@@ -653,7 +806,7 @@ class StemRow(Card):
             size_hint_x=None,
             width=dp(50),
             color=accent,
-            font_size="13sp"
+            font_size="12sp"
         )
 
         self.btn_mute = ToggleButton(
@@ -872,12 +1025,11 @@ class CrogerMixerScreen(
             spacing=dp(8)
         )
 
-        menu = MixerButton(
-            text="☰",
+        menu = VectorIconButton(
+            icon_type="menu",
             size_hint_x=None,
             width=dp(48),
-            bg=BG,
-            font_size="26sp"
+            bg=BG
         )
 
         logo = Image(
@@ -941,12 +1093,11 @@ class CrogerMixerScreen(
             subtitulo
         )
 
-        config = MixerButton(
-            text="⚙",
+        config = VectorIconButton(
+            icon_type="configuracoes",
             size_hint_x=None,
             width=dp(50),
-            bg=BG,
-            font_size="25sp"
+            bg=BG
         )
 
         header.add_widget(
@@ -1055,12 +1206,11 @@ class CrogerMixerScreen(
             infos
         )
 
-        self.btn_selecionar = MixerButton(
-            text="⋮",
+        self.btn_selecionar = VectorIconButton(
+            icon_type="selecionar",
             size_hint_x=None,
             width=dp(42),
-            bg=CARD,
-            font_size="26sp"
+            bg=CARD
         )
 
         self.btn_selecionar.bind(
@@ -1172,40 +1322,34 @@ class CrogerMixerScreen(
             spacing=dp(8)
         )
 
-        btn_shuffle = MixerButton(
-            text="⤨",
-            bg=CARD,
-            font_size="23sp"
+        btn_shuffle = VectorIconButton(
+            icon_type="shuffle",
+            bg=CARD
         )
 
-        btn_back = MixerButton(
-            text="|◀",
-            bg=CARD,
-            font_size="22sp"
+        btn_back = VectorIconButton(
+            icon_type="voltar",
+            bg=CARD
         )
 
-        self.btn_play = MixerButton(
-            text="▶",
-            bg=BLUE,
-            font_size="32sp"
+        self.btn_play = VectorIconButton(
+            icon_type="play",
+            bg=BLUE
         )
 
-        btn_next = MixerButton(
-            text="▶|",
-            bg=CARD,
-            font_size="22sp"
+        btn_next = VectorIconButton(
+            icon_type="avancar",
+            bg=CARD
         )
 
-        btn_stop = MixerButton(
-            text="■",
-            bg=CARD,
-            font_size="22sp"
+        btn_stop = VectorIconButton(
+            icon_type="stop",
+            bg=CARD
         )
 
-        btn_repeat = MixerButton(
-            text="↻",
-            bg=CARD,
-            font_size="24sp"
+        btn_repeat = VectorIconButton(
+            icon_type="repeat",
+            bg=CARD
         )
 
         btn_back.bind(
@@ -1929,10 +2073,8 @@ class CrogerMixerScreen(
                 "para iniciar"
             )
 
-        self.btn_play.text = (
-            "Ⅱ"
-            if c.playing
-            else "▶"
+        self.btn_play.set_icon(
+            "pause" if c.playing else "play"
         )
 
         self.chip_tom.set_value(
