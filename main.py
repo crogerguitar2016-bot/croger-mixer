@@ -1,7 +1,7 @@
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
-from kivy.graphics import Color, RoundedRectangle, Line
+from kivy.graphics import Color, RoundedRectangle, Line, Ellipse, Rectangle, Triangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -61,6 +61,228 @@ def cor_hex(cor):
     b = int(cor[2] * 255)
 
     return f"{r:02x}{g:02x}{b:02x}"
+
+
+# ==========================================================
+# ÍCONE VETORIAL
+# ==========================================================
+
+class VectorIcon(Widget):
+
+    def __init__(
+        self,
+        icon_type="voz",
+        color=WHITE,
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        self.icon_type = icon_type
+        self.icon_color = color
+
+        with self.canvas:
+            self._color_instr = Color(*self.icon_color)
+
+        self.bind(
+            pos=self._update_canvas,
+            size=self._update_canvas
+        )
+
+        self._draw_icon()
+
+
+    def _update_canvas(self, *args):
+        self._draw_icon()
+
+
+    def _draw_icon(self):
+        self.canvas.clear()
+
+        with self.canvas:
+            self._color_instr = Color(*self.icon_color)
+
+            cx = self.center_x
+            cy = self.center_y
+            w = self.width
+            h = self.height
+            x = self.x
+            y = self.y
+
+            if self.icon_type == "voz":
+                cap_w = min(w, h) * 0.35
+                cap_h = min(w, h) * 0.55
+                Ellipse(
+                    pos=(cx - cap_w / 2, cy - cap_h / 4),
+                    size=(cap_w, cap_h)
+                )
+                Line(
+                    circle=(cx, cy + cap_h / 4, cap_w * 0.7, 180, 360),
+                    width=dp(1.5)
+                )
+                Line(
+                    points=[cx, cy - cap_h / 4, cx, y + h * 0.2],
+                    width=dp(1.5)
+                )
+                Rectangle(
+                    pos=(cx - w * 0.2, y + h * 0.15),
+                    size=(w * 0.4, h * 0.08)
+                )
+
+            elif self.icon_type == "bateria":
+                Ellipse(
+                    pos=(x + w * 0.15, y + h * 0.15),
+                    size=(w * 0.7, h * 0.5)
+                )
+                Rectangle(
+                    pos=(x + w * 0.25, y + h * 0.65),
+                    size=(w * 0.5, h * 0.2)
+                )
+                Triangle(
+                    points=[
+                        cx - w * 0.3, y + h * 0.8,
+                        cx + w * 0.3, y + h * 0.8,
+                        cx, y + h * 0.95
+                    ]
+                )
+
+            elif self.icon_type == "baixo":
+                neck_w = w * 0.15
+                Rectangle(
+                    pos=(cx - neck_w / 2, y + h * 0.2),
+                    size=(neck_w, h * 0.75)
+                )
+                Triangle(
+                    points=[
+                        cx - neck_w, y + h * 0.95,
+                        cx + neck_w, y + h * 0.95,
+                        cx, y + h
+                    ]
+                )
+                Ellipse(
+                    pos=(cx - w * 0.3, y + h * 0.05),
+                    size=(w * 0.6, h * 0.3)
+                )
+
+            elif self.icon_type == "outros":
+                sw = w * 0.38
+                sh = h * 0.38
+                gap = w * 0.08
+                px = x + w * 0.1
+                py = y + h * 0.1
+                Rectangle(pos=(px, py + sh + gap, sw, sh))
+                Rectangle(pos=(px + sw + gap, py + sh + gap, sw, sh))
+                Rectangle(pos=(px, py, sw, sh))
+                Rectangle(pos=(px + sw + gap, py, sw, sh))
+
+            elif self.icon_type == "harmonica":
+                hw = w * 0.8
+                hh = h * 0.4
+                hx = x + (w - hw) / 2
+                hy = cy - hh / 2
+                Rectangle(pos=(hx, hy, hw, hh))
+                num_slots = 5
+                step = hw / (num_slots + 1)
+                for i in range(1, num_slots + 1):
+                    sx = hx + i * step
+                    Line(
+                        points=[sx, hy, sx, hy + hh],
+                        width=dp(1)
+                    )
+
+            elif self.icon_type == "ritmo":
+                bars = 4
+                bw = w * 0.12
+                gap = w * 0.08
+                total_w = bars * bw + (bars - 1) * gap
+                start_x = x + (w - total_w) / 2
+                heights = [0.4, 0.8, 0.5, 0.9]
+                for i, bh_factor in enumerate(heights):
+                    bx = start_x + i * (bw + gap)
+                    bh = h * bh_factor
+                    Rectangle(
+                        pos=(bx, y + h * 0.1),
+                        size=(bw, bh)
+                    )
+
+            elif self.icon_type == "transposicao":
+                Triangle(
+                    points=[
+                        cx - w * 0.25, cy + h * 0.1,
+                        cx + w * 0.25, cy + h * 0.1,
+                        cx, cy + h * 0.45
+                    ]
+                )
+                Triangle(
+                    points=[
+                        cx - w * 0.25, cy - h * 0.1,
+                        cx + w * 0.25, cy - h * 0.1,
+                        cx, cy - h * 0.45
+                    ]
+                )
+                Line(
+                    points=[cx, cy - h * 0.25, cx, cy + h * 0.25],
+                    width=dp(1.5)
+                )
+
+            elif self.icon_type == "metronomo":
+                Triangle(
+                    points=[
+                        x + w * 0.2, y + h * 0.1,
+                        x + w * 0.8, y + h * 0.1,
+                        cx, y + h * 0.9
+                    ]
+                )
+                Line(
+                    points=[cx, y + h * 0.2, cx + w * 0.15, y + h * 0.7],
+                    width=dp(1.5)
+                )
+                Ellipse(
+                    pos=(
+                        cx + w * 0.1 - w * 0.08,
+                        y + h * 0.65 - h * 0.08
+                    ),
+                    size=(w * 0.16, h * 0.16)
+                )
+
+            elif self.icon_type == "analisar":
+                bars = 3
+                bw = w * 0.18
+                gap = w * 0.12
+                total_w = bars * bw + (bars - 1) * gap
+                start_x = x + (w - total_w) / 2
+                heights = [0.5, 0.8, 0.65]
+                for i, bh_factor in enumerate(heights):
+                    bx = start_x + i * (bw + gap)
+                    bh = h * bh_factor
+                    Rectangle(pos=(bx, y + h * 0.15), size=(bw, bh))
+
+            elif self.icon_type == "salvar":
+                Triangle(
+                    points=[
+                        cx - w * 0.3, cy + h * 0.1,
+                        cx + w * 0.3, cy + h * 0.1,
+                        cx, cy - h * 0.35
+                    ]
+                )
+                Rectangle(
+                    pos=(cx - w * 0.12, cy + h * 0.1),
+                    size=(w * 0.24, h * 0.35)
+                )
+
+            elif self.icon_type == "batida_ativa":
+                d = min(w, h) * 0.7
+                Ellipse(
+                    pos=(cx - d / 2, cy - d / 2),
+                    size=(d, d)
+                )
+
+            elif self.icon_type == "batida_inativa":
+                d = min(w, h) * 0.7
+                Line(
+                    circle=(cx, cy, d / 2),
+                    width=dp(1.5)
+                )
 
 
 # ==========================================================
@@ -155,6 +377,72 @@ class MixerButton(Button):
         self.font_size = "14sp"
 
 
+class BottomActionButton(Card):
+
+    def __init__(
+        self,
+        icon_type,
+        text,
+        bg=CARD,
+        font_size="15sp",
+        **kwargs
+    ):
+
+        super().__init__(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(80),
+            bg_color=bg,
+            border_color=BORDER,
+            padding=dp(12),
+            spacing=dp(12),
+            radius=12,
+            **kwargs
+        )
+
+        self.register_event_type('on_release')
+
+        self.icon = VectorIcon(
+            icon_type=icon_type,
+            color=WHITE,
+            size_hint_x=None,
+            width=dp(32)
+        )
+        self.add_widget(self.icon)
+
+        self.lbl = Label(
+            text=text,
+            halign="left",
+            valign="middle",
+            font_size=font_size,
+            color=WHITE,
+            markup=True
+        )
+
+        self.lbl.bind(
+            size=lambda obj, size:
+            setattr(obj, "text_size", size)
+        )
+        self.add_widget(self.lbl)
+
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            return True
+        return super().on_touch_down(touch)
+
+
+    def on_touch_up(self, touch):
+        if self.collide_point(*touch.pos):
+            self.dispatch('on_release')
+            return True
+        return super().on_touch_up(touch)
+
+
+    def on_release(self):
+        pass
+
+
 # ==========================================================
 # TÍTULO DE SEÇÃO
 # ==========================================================
@@ -178,12 +466,11 @@ class SectionHeader(BoxLayout):
             **kwargs
         )
 
-        lbl_icon = Label(
-            text=icon,
+        lbl_icon = VectorIcon(
+            icon_type=icon,
+            color=accent,
             size_hint_x=None,
-            width=dp(38),
-            font_size="25sp",
-            color=accent
+            width=dp(38)
         )
 
         textos = BoxLayout(
@@ -328,12 +615,11 @@ class StemRow(Card):
         self.stem = stem
         self.accent = accent
 
-        self.lbl_icon = Label(
-            text=icon,
+        self.lbl_icon = VectorIcon(
+            icon_type=icon,
+            color=accent,
             size_hint_x=None,
-            width=dp(34),
-            font_size="23sp",
-            color=accent
+            width=dp(34)
         )
 
         self.lbl_nome = Label(
@@ -980,7 +1266,7 @@ class CrogerMixerScreen(
 
         card.add_widget(
             SectionHeader(
-                "▥",
+                "outros",
                 "MIXER DE ÁUDIO",
                 (
                     "Ajuste o volume de cada "
@@ -995,25 +1281,25 @@ class CrogerMixerScreen(
             (
                 "voz",
                 "Voz",
-                "●",
+                "voz",
                 CYAN
             ),
             (
                 "bateria",
                 "Bateria",
-                "◉",
+                "bateria",
                 PURPLE
             ),
             (
                 "baixo",
                 "Baixo",
-                "◆",
+                "baixo",
                 CYAN
             ),
             (
                 "outros",
                 "Outros",
-                "♪",
+                "outros",
                 PINK
             ),
         )
@@ -1067,7 +1353,7 @@ class CrogerMixerScreen(
 
         harmonica.add_widget(
             SectionHeader(
-                "▥",
+                "harmonica",
                 "ANÁLISE HARMÔNICA",
                 "Campo harmônico da música",
                 PURPLE
@@ -1110,7 +1396,7 @@ class CrogerMixerScreen(
 
         acordes.add_widget(
             SectionHeader(
-                "♪",
+                "outros",
                 "ACORDES EM TEMPO REAL",
                 "Acorde atual e próximos",
                 PURPLE
@@ -1191,7 +1477,7 @@ class CrogerMixerScreen(
 
         ritmo.add_widget(
             SectionHeader(
-                "◉",
+                "ritmo",
                 "COMPASSO E RITMO",
                 "Posição atual na música",
                 CYAN
@@ -1219,14 +1505,22 @@ class CrogerMixerScreen(
             )
         )
 
-        self.lbl_batidas = (
-            MixerButton(
-                text="○ ○ ○ ○",
-                bg=CARD_2,
-                fg=CYAN,
-                font_size="20sp"
-            )
+        self.lbl_batidas = Card(
+            orientation="horizontal",
+            bg_color=CARD_2,
+            border_color=BORDER,
+            padding=dp(8),
+            spacing=dp(6),
+            radius=12
         )
+        self.batida_icons = []
+        for _ in range(4):
+            icon = VectorIcon(
+                icon_type="batida_inativa",
+                color=CYAN
+            )
+            self.batida_icons.append(icon)
+            self.lbl_batidas.add_widget(icon)
 
         stats.add_widget(
             self.lbl_compasso_num
@@ -1258,7 +1552,7 @@ class CrogerMixerScreen(
 
         topo_trans.add_widget(
             SectionHeader(
-                "↕",
+                "transposicao",
                 "TRANSPOSIÇÃO",
                 "Altere o tom da música",
                 CYAN
@@ -1356,10 +1650,9 @@ class CrogerMixerScreen(
         )
 
         card.add_widget(
-            Label(
-                text="♩",
+            VectorIcon(
+                icon_type="metronomo",
                 color=WHITE,
-                font_size="31sp",
                 size_hint_x=None,
                 width=dp(45)
             )
@@ -1466,18 +1759,20 @@ class CrogerMixerScreen(
             spacing=dp(10)
         )
 
-        btn_analisar = MixerButton(
+        btn_analisar = BottomActionButton(
+            icon_type="analisar",
             text=(
-                "▥  ANALISAR E MIXAR\n"
+                "ANALISAR E MIXAR\n"
                 "Separar, analisar e processar"
             ),
             bg=PURPLE,
             font_size="15sp"
         )
 
-        btn_salvar = MixerButton(
+        btn_salvar = BottomActionButton(
+            icon_type="salvar",
             text=(
-                "↓  SALVAR / EXPORTAR\n"
+                "SALVAR / EXPORTAR\n"
                 "Salvar projeto ou exportar áudio"
             ),
             bg=CARD,
@@ -1724,25 +2019,28 @@ class CrogerMixerScreen(
             )
         )
 
-        pontos = []
+        while len(self.batida_icons) < total_tempos:
+            icon = VectorIcon(
+                icon_type="batida_inativa",
+                color=CYAN
+            )
+            self.batida_icons.append(icon)
+            self.lbl_batidas.add_widget(icon)
 
-        for i in range(
-            1,
-            total_tempos + 1
-        ):
-
-            if (
-                c.tempo_compasso
-                and
-                i <= c.tempo_compasso
-            ):
-                pontos.append("●")
+        for i, icon in enumerate(self.batida_icons):
+            if i < total_tempos:
+                icon.opacity = 1
+                if (
+                    c.tempo_compasso
+                    and
+                    (i + 1) <= c.tempo_compasso
+                ):
+                    icon.icon_type = "batida_ativa"
+                else:
+                    icon.icon_type = "batida_inativa"
+                icon._draw_icon()
             else:
-                pontos.append("○")
-
-        self.lbl_batidas.text = (
-            " ".join(pontos)
-        )
+                icon.opacity = 0
 
         for semitons, btn in (
             self.transpose_buttons.items()
