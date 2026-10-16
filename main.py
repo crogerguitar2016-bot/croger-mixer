@@ -171,17 +171,17 @@ class VectorIcon(Widget):
                 gap = w * 0.08
                 px = x + w * 0.1
                 py = y + h * 0.1
-                Rectangle(pos=(px, py + sh + gap, sw, sh))
-                Rectangle(pos=(px + sw + gap, py + sh + gap, sw, sh))
-                Rectangle(pos=(px, py, sw, sh))
-                Rectangle(pos=(px + sw + gap, py, sw, sh))
+                Rectangle(pos=(px, py + sh + gap), size=(sw, sh))
+                Rectangle(pos=(px + sw + gap, py + sh + gap), size=(sw, sh))
+                Rectangle(pos=(px, py), size=(sw, sh))
+                Rectangle(pos=(px + sw + gap, py), size=(sw, sh))
 
             elif self.icon_type == "harmonica":
                 hw = w * 0.8
                 hh = h * 0.4
                 hx = x + (w - hw) / 2
                 hy = cy - hh / 2
-                Rectangle(pos=(hx, hy, hw, hh))
+                Rectangle(pos=(hx, hy), size=(hw, hh))
                 num_slots = 5
                 step = hw / (num_slots + 1)
                 for i in range(1, num_slots + 1):
