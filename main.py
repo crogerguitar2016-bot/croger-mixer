@@ -955,10 +955,101 @@ class CrogerMixerScreen(
 ):
 
     def abrir_sobre(self, *args):
+
         popup = Popup(
             title="SOBRE O CROGER MIXER",
             size_hint=(0.9, 0.85)
         )
+
+        principal = BoxLayout(
+            orientation="vertical",
+            padding=dp(14),
+            spacing=dp(12)
+        )
+
+        scroll = ScrollView(
+            do_scroll_x=False
+        )
+
+        texto_sobre = Label(
+            text=(
+                "[b][size=24]CROGER MIXER[/size][/b]\\n"
+                "Versão 1.0\\n\\n"
+                "[b]Autor[/b]\\n"
+                "Carlos Rogério - C Roger\\n\\n"
+                "[b]Desenvolvido em[/b]\\n"
+                "Jijoca de Jericoacoara - Ceará - Brasil\\n\\n"
+                "O CROGER MIXER nasceu da união entre música, ensino, "
+                "tecnologia e criatividade. Carlos Rogério, músico, "
+                "professor e criador independente, iniciou sua jornada "
+                "desenvolvendo ferramentas para atender necessidades "
+                "reais de seus próprios estudos, alunos e projetos musicais.\\n\\n"
+                "A partir do celular, utilizando Termux, Python, Kivy, "
+                "GitHub e outras ferramentas, transformou ideias em "
+                "aplicativos funcionais, aprendendo cada etapa do processo: "
+                "interface, lógica, automação, processamento de áudio e "
+                "compilação Android.\\n\\n"
+                "O CROGER MIXER representa mais um passo nessa caminhada: "
+                "uma ferramenta criada para separar, analisar e compreender "
+                "a música de forma prática, reunindo tecnologia e conhecimento "
+                "musical em um único ambiente.\\n\\n"
+                '"Uma ideia pode começar pequena. Com estudo, persistência '
+                'e criatividade, ela pode se transformar em uma ferramenta '
+                'capaz de ajudar muitas pessoas."\\n\\n'
+                "[b]Desenvolvido por Carlos Rogério - C Roger[/b]"
+            ),
+            markup=True,
+            size_hint_y=None,
+            halign="left",
+            valign="top",
+            color=WHITE,
+            font_size="14sp"
+        )
+
+        texto_sobre.bind(
+            width=lambda obj, largura:
+            setattr(
+                obj,
+                "text_size",
+                (largura, None)
+            )
+        )
+
+        texto_sobre.bind(
+            texture_size=lambda obj, tamanho:
+            setattr(
+                obj,
+                "height",
+                tamanho[1] + dp(20)
+            )
+        )
+
+        scroll.add_widget(
+            texto_sobre
+        )
+
+        btn_fechar = MixerButton(
+            text="FECHAR",
+            bg=PURPLE,
+            size_hint_y=None,
+            height=dp(48),
+            font_size="14sp"
+        )
+
+        btn_fechar.bind(
+            on_release=lambda *args:
+            popup.dismiss()
+        )
+
+        principal.add_widget(
+            scroll
+        )
+
+        principal.add_widget(
+            btn_fechar
+        )
+
+        popup.content = principal
         popup.open()
 
     def __init__(
@@ -1106,6 +1197,10 @@ class CrogerMixerScreen(
             size_hint_x=None,
             width=dp(50),
             bg=BG
+        )
+
+        config.bind(
+            on_release=self.abrir_sobre
         )
 
         header.add_widget(
