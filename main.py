@@ -7,6 +7,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.image import Image
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.slider import Slider
 from kivy.uix.togglebutton import ToggleButton
@@ -952,6 +953,13 @@ class StemRow(Card):
 class CrogerMixerScreen(
     ScrollView
 ):
+
+    def abrir_sobre(self, *args):
+        popup = Popup(
+            title="SOBRE O CROGER MIXER",
+            size_hint=(0.9, 0.85)
+        )
+        popup.open()
 
     def __init__(
         self,
