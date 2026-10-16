@@ -91,8 +91,22 @@ class MixerController:
 
     def _notify(self):
 
-        if callable(self.on_change):
-            self.on_change()
+        callback = self.on_change
+
+        if not callable(callback):
+            return
+
+        if (
+            threading.current_thread()
+            is threading.main_thread()
+        ):
+            callback()
+            return
+
+        Clock.schedule_once(
+            lambda dt, cb=callback: cb(),
+            0
+        )
 
 
     # =====================================================

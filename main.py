@@ -751,13 +751,13 @@ class StemRow(Card):
     ):
 
         super().__init__(
-            orientation="horizontal",
+            orientation="vertical",
             size_hint_y=None,
-            height=dp(78),
-            spacing=dp(7),
+            height=dp(122),
+            spacing=dp(6),
             padding=(
-                dp(8),
-                dp(5)
+                dp(10),
+                dp(7)
             ),
             radius=11,
             bg_color=CARD_2,
@@ -768,20 +768,96 @@ class StemRow(Card):
         self.stem = stem
         self.accent = accent
 
+        # ==================================================
+        # LINHA SUPERIOR
+        # ÍCONE | NOME | % | MUDO | SOLO
+        # ==================================================
+
+        topo = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(48),
+            spacing=dp(7)
+        )
+
         self.lbl_icon = VectorIcon(
             icon_type=icon,
             color=accent,
             size_hint_x=None,
-            width=dp(34)
+            width=dp(38)
         )
 
         self.lbl_nome = Label(
             text=f"[b]{nome}[/b]",
             markup=True,
             size_hint_x=None,
-            width=dp(54),
-            font_size="11sp",
+            width=dp(62),
+            font_size="12sp",
             color=WHITE
+        )
+
+        self.lbl_percent = Label(
+            text="100%",
+            size_hint_x=None,
+            width=dp(48),
+            color=accent,
+            font_size="13sp"
+        )
+
+        self.btn_mute = ToggleButton(
+            text="MUDO",
+            size_hint_x=None,
+            width=dp(70),
+            background_normal="",
+            background_down="",
+            background_color=CARD,
+            color=WHITE,
+            font_size="11sp"
+        )
+
+        self.btn_solo = ToggleButton(
+            text="SOLO",
+            size_hint_x=None,
+            width=dp(68),
+            background_normal="",
+            background_down="",
+            background_color=CARD,
+            color=WHITE,
+            font_size="11sp"
+        )
+
+        topo.add_widget(
+            self.lbl_icon
+        )
+
+        topo.add_widget(
+            self.lbl_nome
+        )
+
+        topo.add_widget(
+            self.lbl_percent
+        )
+
+        topo.add_widget(
+            self.btn_mute
+        )
+
+        topo.add_widget(
+            self.btn_solo
+        )
+
+        # ==================================================
+        # SLIDER GRANDE
+        # ==================================================
+
+        area_slider = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(52),
+            padding=(
+                dp(5),
+                0
+            )
         )
 
         self.slider = Slider(
@@ -791,46 +867,32 @@ class StemRow(Card):
                 controller
                 .stems[stem]["volume"]
             ),
-            step=0.01
+            step=0.01,
+            orientation="horizontal"
         )
+
+        # Trilho largo e claramente deslizante
+        self.slider.background_width = dp(12)
 
         self.slider.value_track = True
         self.slider.value_track_color = accent
-        self.slider.value_track_width = dp(6)
+        self.slider.value_track_width = dp(12)
+
+        # Cursor largo em vez de botão redondo
         self.slider.cursor_size = (
-            dp(34),
-            dp(34)
+            dp(72),
+            dp(28)
         )
 
-        self.lbl_percent = Label(
-            text="100%",
-            size_hint_x=None,
-            width=dp(50),
-            color=accent,
-            font_size="12sp"
+        self.slider.padding = dp(28)
+
+        area_slider.add_widget(
+            self.slider
         )
 
-        self.btn_mute = ToggleButton(
-            text="MUDO",
-            size_hint_x=None,
-            width=dp(68),
-            background_normal="",
-            background_down="",
-            background_color=CARD,
-            color=WHITE,
-            font_size="10sp"
-        )
-
-        self.btn_solo = ToggleButton(
-            text="SOLO",
-            size_hint_x=None,
-            width=dp(65),
-            background_normal="",
-            background_down="",
-            background_color=CARD,
-            color=WHITE,
-            font_size="10sp"
-        )
+        # ==================================================
+        # EVENTOS
+        # ==================================================
 
         self.slider.bind(
             value=self._volume
@@ -845,27 +907,11 @@ class StemRow(Card):
         )
 
         self.add_widget(
-            self.lbl_icon
+            topo
         )
 
         self.add_widget(
-            self.lbl_nome
-        )
-
-        self.add_widget(
-            self.slider
-        )
-
-        self.add_widget(
-            self.lbl_percent
-        )
-
-        self.add_widget(
-            self.btn_mute
-        )
-
-        self.add_widget(
-            self.btn_solo
+            area_slider
         )
 
         self.refresh()
@@ -944,7 +990,6 @@ class StemRow(Card):
             if dados["solo"]
             else CARD
         )
-
 
 # ==========================================================
 # TELA PRINCIPAL
