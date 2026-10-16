@@ -6,6 +6,7 @@ from kivy.utils import platform
 class AndroidAudioEngine:
 
     REQUEST_AUDIO = 4817
+    REQUEST_EXPORT = 4818
 
     STEMS = (
         "voz",
@@ -33,6 +34,9 @@ class AndroidAudioEngine:
 
         self.current_uri = None
         self.current_name = None
+
+        self._pending_export_path = None
+        self._pending_export_callback = None
 
         self._activity_module = None
         self._activity = None
@@ -134,6 +138,90 @@ class AndroidAudioEngine:
             return False
 
 
+    def open_export_picker(
+        self,
+        arquivo,
+        nome_sugerido=None,
+        on_saved=None
+    ):
+
+        if not self.available:
+
+            self._erro(
+                "Exportação disponível somente no Android."
+            )
+
+            return False
+
+        arquivo = Path(
+            arquivo
+        )
+
+        if not arquivo.exists():
+
+            self._erro(
+                "Arquivo do mix final não encontrado."
+            )
+
+            return False
+
+        try:
+
+            Intent = self.autoclass(
+                "android.content.Intent"
+            )
+
+            intent = Intent(
+                Intent.ACTION_CREATE_DOCUMENT
+            )
+
+            intent.addCategory(
+                Intent.CATEGORY_OPENABLE
+            )
+
+            intent.setType(
+                "audio/mpeg"
+            )
+
+            intent.putExtra(
+                Intent.EXTRA_TITLE,
+                str(
+                    nome_sugerido
+                    or arquivo.name
+                )
+            )
+
+            intent.addFlags(
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+
+            self._pending_export_path = str(
+                arquivo
+            )
+
+            self._pending_export_callback = (
+                on_saved
+            )
+
+            self._activity.startActivityForResult(
+                intent,
+                self.REQUEST_EXPORT
+            )
+
+            return True
+
+        except Exception as exc:
+
+            self._pending_export_path = None
+            self._pending_export_callback = None
+
+            self._erro(
+                exc
+            )
+
+            return False
+
+
     def _on_activity_result(
         self,
         request_code,
@@ -141,36 +229,152 @@ class AndroidAudioEngine:
         intent
     ):
 
-        if request_code != self.REQUEST_AUDIO:
-            return
-
-        if intent is None:
-            return
-
         try:
 
             Activity = self.autoclass(
                 "android.app.Activity"
             )
 
-            if result_code != Activity.RESULT_OK:
+            # ----------------------------------------------
+            # ABRIR MÚSICA
+            # ----------------------------------------------
+
+            if request_code == self.REQUEST_AUDIO:
+
+                if (
+                    result_code
+                    != Activity.RESULT_OK
+                    or intent is None
+                ):
+                    return
+
+                uri = intent.getData()
+
+                if uri is None:
+                    return
+
+                self._persistir_permissao(
+                    uri
+                )
+
+                self.load_uri(
+                    uri
+                )
+
                 return
 
-            uri = intent.getData()
+            # ----------------------------------------------
+            # SALVAR MIX FINAL
+            # ----------------------------------------------
 
-            if uri is None:
+            if request_code == self.REQUEST_EXPORT:
+
+                arquivo = (
+                    self._pending_export_path
+                )
+
+                callback = (
+                    self._pending_export_callback
+                )
+
+                self._pending_export_path = None
+                self._pending_export_callback = None
+
+                if (
+                    result_code
+                    != Activity.RESULT_OK
+                    or intent is None
+                ):
+                    return
+
+                uri = intent.getData()
+
+                if uri is None:
+                    return
+
+                if not arquivo:
+
+                    raise RuntimeError(
+                        "Arquivo temporário da exportação ausente."
+                    )
+
+                origem = Path(
+                    arquivo
+                )
+
+                if not origem.exists():
+
+                    raise RuntimeError(
+                        "Mix final não encontrado."
+                    )
+
+                resolver = (
+                    self._activity
+                    .getContentResolver()
+                )
+
+                saida = (
+                    resolver.openOutputStream(
+                        uri
+                    )
+                )
+
+                if saida is None:
+
+                    raise RuntimeError(
+                        "Não foi possível abrir o destino."
+                    )
+
+                try:
+
+                    with origem.open(
+                        "rb"
+                    ) as entrada:
+
+                        while True:
+
+                            bloco = entrada.read(
+                                64 * 1024
+                            )
+
+                            if not bloco:
+                                break
+
+                            saida.write(
+                                bytearray(
+                                    bloco
+                                )
+                            )
+
+                    try:
+                        saida.flush()
+                    except Exception:
+                        pass
+
+                finally:
+
+                    try:
+                        saida.close()
+                    except Exception:
+                        pass
+
+                if callable(
+                    callback
+                ):
+
+                    callback(
+                        str(
+                            uri.toString()
+                        )
+                    )
+
                 return
-
-            self._persistir_permissao(
-                uri
-            )
-
-            self.load_uri(
-                uri
-            )
 
         except Exception as exc:
-            self._erro(exc)
+
+            self._erro(
+                exc
+            )
 
 
     # ======================================================

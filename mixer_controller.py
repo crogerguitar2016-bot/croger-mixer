@@ -1347,10 +1347,15 @@ class MixerController:
             self.exportando = False
 
             self._status_worker(
-                "Mix exportado com sucesso: "
-                + str(
-                    arquivo
-                )
+                "Mix final pronto. Escolha onde salvar..."
+            )
+
+            Clock.schedule_once(
+                lambda dt, arq=str(arquivo):
+                self._abrir_seletor_exportacao(
+                    arq
+                ),
+                0
             )
 
         except Exception as exc:
@@ -1371,6 +1376,75 @@ class MixerController:
                 ),
                 0
             )
+
+
+    def _abrir_seletor_exportacao(
+        self,
+        arquivo
+    ):
+
+        try:
+
+            if self.audio_engine is None:
+
+                raise RuntimeError(
+                    "Motor de áudio não disponível."
+                )
+
+            abrir = getattr(
+                self.audio_engine,
+                "open_export_picker",
+                None
+            )
+
+            if not callable(
+                abrir
+            ):
+
+                raise RuntimeError(
+                    "Seletor de exportação não disponível."
+                )
+
+            nome = Path(
+                arquivo
+            ).name
+
+            abriu = abrir(
+                arquivo,
+                nome_sugerido=nome,
+                on_saved=self._exportacao_salva
+            )
+
+            if abriu:
+
+                self.status_message = (
+                    "Escolha a pasta e confirme o nome do MP3."
+                )
+
+                self._notify()
+
+        except Exception as exc:
+
+            self.audio_error(
+                "Falha ao abrir o seletor de exportação: "
+                + str(
+                    exc
+                )
+            )
+
+
+    def _exportacao_salva(
+        self,
+        uri
+    ):
+
+        self.last_error = None
+
+        self.status_message = (
+            "Mix salvo com sucesso."
+        )
+
+        self._notify()
 
 
     # =====================================================
