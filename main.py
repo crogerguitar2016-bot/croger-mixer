@@ -1278,9 +1278,13 @@ class CrogerMixerScreen(
         card = Card(
             orientation="vertical",
             size_hint_y=None,
-            height=dp(330),
+            height=dp(1),
             padding=dp(12),
             spacing=dp(6)
+        )
+
+        card.bind(
+            minimum_height=card.setter("height")
         )
 
         top = BoxLayout(
@@ -1551,9 +1555,13 @@ class CrogerMixerScreen(
         card = Card(
             orientation="vertical",
             size_hint_y=None,
-            height=dp(355),
+            height=dp(1),
             padding=dp(10),
             spacing=dp(6)
+        )
+
+        card.bind(
+            minimum_height=card.setter("height")
         )
 
         card.add_widget(
