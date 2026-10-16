@@ -564,7 +564,7 @@ class BottomActionButton(Card):
 
         self.lbl = Label(
             text=text,
-            halign="left",
+            halign="center",
             valign="middle",
             font_size=font_size,
             color=WHITE,
@@ -1905,20 +1905,14 @@ class CrogerMixerScreen(
 
         btn_analisar = BottomActionButton(
             icon_type="analisar",
-            text=(
-                "ANALISAR E MIXAR\n"
-                "Separar, analisar e processar"
-            ),
+            text="[b]ANALISAR E MIXAR[/b]",
             bg=PURPLE,
             font_size="15sp"
         )
 
         btn_salvar = BottomActionButton(
             icon_type="salvar",
-            text=(
-                "SALVAR / EXPORTAR\n"
-                "Salvar projeto ou exportar áudio"
-            ),
+            text="[b]SALVAR / EXPORTAR[/b]",
             bg=CARD,
             font_size="14sp"
         )
