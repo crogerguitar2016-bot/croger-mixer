@@ -407,3 +407,102 @@ class CrogerMotorClient:
             )
 
         return resultado
+
+
+    # ======================================================
+    # EXPORTAÇÃO DO MIX FINAL
+    # ======================================================
+
+    def exportar_mix(
+        self,
+        job_id,
+        volumes
+    ):
+
+        if not job_id:
+
+            raise ValueError(
+                "Job ID ausente"
+            )
+
+        if not isinstance(
+            volumes,
+            dict
+        ):
+
+            raise ValueError(
+                "Volumes inválidos"
+            )
+
+        return self._post_json(
+            "/export",
+            {
+                "job_id": job_id,
+                "volumes": volumes
+            },
+            timeout=600
+        )
+
+
+    def baixar_mix(
+        self,
+        job_id,
+        destino
+    ):
+
+        if not job_id:
+
+            raise ValueError(
+                "Job ID ausente"
+            )
+
+        destino = Path(
+            destino
+        )
+
+        destino.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        url = (
+            f"{self.base_url}"
+            f"/export/{job_id}"
+        )
+
+        temporario = (
+            destino
+            .with_suffix(
+                destino.suffix + ".part"
+            )
+        )
+
+        with urllib.request.urlopen(
+            url,
+            timeout=120
+        ) as resposta:
+
+            with temporario.open(
+                "wb"
+            ) as saida:
+
+                while True:
+
+                    bloco = resposta.read(
+                        1024 * 256
+                    )
+
+                    if not bloco:
+                        break
+
+                    saida.write(
+                        bloco
+                    )
+
+        temporario.replace(
+            destino
+        )
+
+        return str(
+            destino
+        )

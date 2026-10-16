@@ -47,6 +47,7 @@ class MixerController:
 
         self.job_id = None
         self.processando = False
+        self.exportando = False
         self.status_message = None
 
         self.analysis_data = {}
@@ -1212,10 +1213,164 @@ class MixerController:
 
     def salvar_exportar(self):
 
-        print(
-            "CROGER MIXER:"
-            " salvar_exportar()"
+        if self.exportando:
+            return False
+
+        if not self.job_id:
+
+            self.audio_error(
+                "Analise e misture a música antes de exportar."
+            )
+
+            return False
+
+        if self.audio_engine is None:
+
+            self.audio_error(
+                "Motor de áudio não disponível."
+            )
+
+            return False
+
+        app_files_dir = getattr(
+            self.audio_engine,
+            "app_files_dir",
+            None
         )
+
+        if not app_files_dir:
+
+            self.audio_error(
+                "Diretório interno do aplicativo não disponível."
+            )
+
+            return False
+
+        volumes = {
+            stem: float(
+                self.volume_efetivo(
+                    stem
+                )
+            )
+            for stem in self.STEMS
+        }
+
+        nome_base = (
+            Path(
+                self.music_name
+            )
+            .stem
+            .strip()
+        )
+
+        if not nome_base:
+
+            nome_base = (
+                "CROGER_MIX"
+            )
+
+        destino = (
+            Path(
+                app_files_dir
+            )
+            /
+            "croger_exports"
+            /
+            (
+                nome_base
+                + "_CROGER_MIX.mp3"
+            )
+        )
+
+        self.exportando = True
+        self.last_error = None
+
+        self.status_message = (
+            "Preparando mix final..."
+        )
+
+        self._notify()
+
+        threading.Thread(
+            target=self._salvar_exportar_worker,
+            args=(
+                volumes,
+                destino
+            ),
+            daemon=True
+        ).start()
+
+        return True
+
+
+    def _salvar_exportar_worker(
+        self,
+        volumes,
+        destino
+    ):
+
+        try:
+
+            self._status_worker(
+                "Gerando mix final..."
+            )
+
+            resposta = (
+                self.motor.exportar_mix(
+                    self.job_id,
+                    volumes
+                )
+            )
+
+            if not resposta.get(
+                "ok"
+            ):
+
+                raise RuntimeError(
+                    resposta.get(
+                        "erro",
+                        "Falha ao gerar mix final."
+                    )
+                )
+
+            self._status_worker(
+                "Baixando mix final..."
+            )
+
+            arquivo = (
+                self.motor.baixar_mix(
+                    self.job_id,
+                    destino
+                )
+            )
+
+            self.exportando = False
+
+            self._status_worker(
+                "Mix exportado com sucesso: "
+                + str(
+                    arquivo
+                )
+            )
+
+        except Exception as exc:
+
+            self.exportando = False
+
+            mensagem = (
+                "Falha ao exportar mix: "
+                + str(
+                    exc
+                )
+            )
+
+            Clock.schedule_once(
+                lambda dt, msg=mensagem:
+                self.audio_error(
+                    msg
+                ),
+                0
+            )
 
 
     # =====================================================
